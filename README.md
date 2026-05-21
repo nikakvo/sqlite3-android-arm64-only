@@ -11,8 +11,9 @@
 ## Requirements
 
 - Android with SukiSU Ultra / KernelSU / Magisk
+- Magisk: Android 6.0+ (API 23+)
+- KernelSU / SukiSU Ultra: Android 12+
 - Arm64 device only
-- Android 5.0+ (API 21+)
 
 ---
 
