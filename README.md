@@ -137,7 +137,7 @@ Max-feature standalone build for Android Arm64 (v3.53.1 working 🌬🌬🌬)
 Open Termux and run:
 
 ```sh
-sqlite3 --version
+su -c sqlite3 --version
 ```
 
 Expected output:
@@ -148,7 +148,7 @@ Expected output:
 Test a feature — for example FTS5:
 
 ```sh
-sqlite3 /tmp/test.db "CREATE VIRTUAL TABLE t USING fts5(content); INSERT INTO t VALUES('hello world'); SELECT * FROM t WHERE t MATCH 'hello';"
+su -c "sqlite3 /tmp/test.db \"CREATE VIRTUAL TABLE t USING fts5(content); INSERT INTO t VALUES('hello world'); SELECT * FROM t WHERE t MATCH 'hello';\""
 ```
 
 ---
