@@ -1,5 +1,26 @@
 # Changelog
 
+v3.53.1-r2 — 2026-05-23
+Build — Compiler Flags (new)
+
+-fno-unwind-tables + -fno-asynchronous-unwind-tables — removes unwind/exception tables from binary. CLI tool doesn't need them. Standard for embedded builds, reduces binary size
+-fmerge-all-constants — merges identical constants across compilation units. Small size reduction
+
+Build — Linker Flags (new)
+
+-Wl,-O2 — linker-level optimization on top of compiler -O3. Small additional gain, no downside
+
+Build — SQLite Flags (new)
+
+SQLITE_ENABLE_PERCENTILE — adds percentile(), percentile_cont(), percentile_disc() aggregate functions. Useful for median, P50/P95/P99 analytics directly in SQL
+SQLITE_ENABLE_STMT_SCANSTATUS — enables runtime scan statistics per prepared statement. Useful for query profiling and planner analysis
+
+Module
+
+Updated webroot/help.html — new section for Percentile & Analytics with usage examples
+All new r2 flags documented with descriptions
+Build command updated to r2 final
+
 ## v3.53.1-r1 — 2026-05-23
 Build — Compiler & Linker
 
