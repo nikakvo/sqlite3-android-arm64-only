@@ -1,6 +1,6 @@
 {
-  "version": "v3.53.1-r1",
-  "versionCode": 3353011,
-  "zipUrl": "https://github.com/nikakvo/sqlite3-android-arm64-only/releases/download/v3.53.1-r1/sqlite3-v3.53.1-r1.zip",
+  "version": "v3.53.1-r2",
+  "versionCode": 3353012,
+  "zipUrl": "https://github.com/nikakvo/sqlite3-android-arm64-only/releases/download/v3.53.1-r2/sqlite3-v3.53.1-r2.zip",
   "changelog": "https://github.com/nikakvo/sqlite3-android-arm64-only/blob/main/CHANGELOG.md"
 }
