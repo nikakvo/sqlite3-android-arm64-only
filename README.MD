@@ -77,7 +77,6 @@ The module deploys a complete reference configuration file to:
 
 ```
 /data/local/.sqliterc-full
-/.sqliterc-full
 ```
 
 It contains every tunable PRAGMA with explanations — including advanced options like `page_size`, `locking_mode`, `auto_vacuum`, and device-class mmap tuning. Everything is commented out by default.
