@@ -100,7 +100,6 @@ sqlite3 -init /data/local/.sqliterc-full /path/to/database.db
 sqlite3 --version
 ```
 <img width="300" alt="dnscrypt" src="https://raw.githubusercontent.com/nikakvo/sqlite3-android-arm64-only/main/Sqlite3.jpg" />
-```
 
 ## Requirements
 
