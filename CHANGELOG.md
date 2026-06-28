@@ -1,5 +1,21 @@
 # Changelog
 
+## v3.53.3
+
+> SQLite 3.53.3 — 2026-06-26
+
+Bugfix patch release. No new features.
+
+Fixes for problems in 3.53.0 / 3.53.1 / 3.53.2, mostly reported by AI-generated issues.
+
+---
+
+**SQLite source info:**
+- `SQLITE_SOURCE_ID`: `2026-06-26 20:14:12 d4c0e51e4aeb96955b99185ab9cde75c339e2c29c3f3f12428d364a10d782c62`
+- `SHA3-256 (sqlite3.c)`: `28e484abdaa43630e34040ef6ed92be973a1ad54107803d8af5145b889c23ed7`
+
+---
+
 ## v3.53.2-r1 — 2026-06-13
 
 ### SQLite
