@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.53.4
+
+- Updated SQLite to version 3.53.4.
+- Includes the latest upstream bug fixes and stability improvements.
+
+---
+
 ## v3.53.3
 
 > SQLite 3.53.3 — 2026-06-26
