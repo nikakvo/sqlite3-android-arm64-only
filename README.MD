@@ -152,7 +152,6 @@ Only the standalone `sqlite3` command-line shell is replaced. All applications a
 
 - [SQLite Development Team](https://www.sqlite.org/)
 - Android NDK
-- SukiSU Ultra / KernelSU / Magisk projects
 
 ---
 
