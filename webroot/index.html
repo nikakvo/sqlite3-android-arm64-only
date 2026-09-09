@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0d0f10">
+  <title>SQLite3 — Android Arm64 Help</title>
+  <style>
+    :root {
+      --bg: #0d0f10; --surface: #131618; --surface2: #1a1d20; --border: #252a2e;
+      --accent: #4affb4; --accent2: #00d4ff; --accent3: #ff9f43; --accent4: #ff6b6b;
+      --text: #d4dbe3; --text-dim: #6b7a8a; --text-bright: #eef2f7;
+      --mono: 'JetBrains Mono', ui-monospace, 'Roboto Mono', Menlo, Consolas, monospace;
+      --sans: 'Syne', -apple-system, 'Roboto', 'Segoe UI', sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
+    /* System bars stay visible; just do not draw underneath them. */
+    .header { padding-top: env(safe-area-inset-top, 0px); }
+    .scroll-area { padding-bottom: env(safe-area-inset-bottom, 0px); }
+    body { background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 14px; line-height: 1.7; display: flex; flex-direction: column; }
+    .top-block { flex-shrink: 0; background: var(--bg); border-bottom: 1px solid var(--border); z-index: 10; }
+    header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; gap: 12px; }
+    .header-left { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .logo-icon { width: 38px; height: 38px; flex-shrink: 0; position: relative; border-radius: 10px; overflow: visible; }
+    .logo-icon svg { width: 38px; height: 38px; display: block; filter: drop-shadow(0 0 6px rgba(74,255,180,0.55)); animation: iconPulse 3s ease-in-out infinite; }
+    @keyframes iconPulse {
+      0%,100% { filter: drop-shadow(0 0 5px rgba(74,255,180,0.5)) drop-shadow(0 0 12px rgba(0,212,255,0.25)); }
+      50% { filter: drop-shadow(0 0 10px rgba(74,255,180,0.9)) drop-shadow(0 0 22px rgba(0,212,255,0.55)); }
+    }
+    .logo-icon .ring { animation: ringSpin 8s linear infinite; transform-origin: 19px 19px; }
+    @keyframes ringSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .logo-icon .dot-blink  { animation: dotBlink 2s ease-in-out infinite; }
+    .logo-icon .dot-blink2 { animation: dotBlink 2s ease-in-out infinite 0.66s; }
+    .logo-icon .dot-blink3 { animation: dotBlink 2s ease-in-out infinite 1.33s; }
+    @keyframes dotBlink { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+    .header-title { font-family: var(--sans); font-size: 16px; font-weight: 800; color: var(--text-bright); letter-spacing: -0.4px; white-space: nowrap; }
+    .header-sub { font-size: 9px; color: var(--text-dim); letter-spacing: 0.07em; text-transform: uppercase; margin-top: 1px; white-space: nowrap; }
+    .version-badge { background: rgba(74,255,180,0.1); border: 1px solid rgba(74,255,180,0.3); color: var(--accent); padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+    .mobile-nav { display: none; border-top: 1px solid var(--border); }
+    .mnav-inner { display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0 8px; gap: 4px; scrollbar-width: none; }
+    .mnav-inner::-webkit-scrollbar { display: none; }
+    .mnav-btn { display: flex; align-items: center; gap: 5px; padding: 9px 13px; border: none; background: transparent; color: var(--text-dim); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.04em; white-space: nowrap; cursor: pointer; border-bottom: 2px solid transparent; -webkit-tap-highlight-color: transparent; }
+    .mnav-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .mnav-btn svg { flex-shrink: 0; }
+    .scroll-area { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+    .layout { display: flex; min-height: 100%; }
+    .sidebar { width: 220px; flex-shrink: 0; border-right: 1px solid var(--border); padding: 20px 0; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+    .sidebar::-webkit-scrollbar { width: 3px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .nav-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); padding: 10px 18px 4px; display: block; }
+    .nav-item { display: block; padding: 6px 18px; color: var(--text-dim); text-decoration: none; font-size: 11.5px; border-left: 2px solid transparent; margin-left: -1px; }
+    .nav-item:hover { color: var(--accent); border-left-color: var(--accent); background: rgba(74,255,180,0.04); }
+    .nav-item.active { color: var(--accent); border-left-color: var(--accent); }
+    .drawer-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.55); z-index: 50; opacity: 0; transition: opacity 0.2s; }
+    .drawer-overlay.open { opacity: 1; pointer-events: all; }
+    .drawer { position: fixed; bottom: 0; left: 0; right: 0; max-height: 70vh; background: var(--surface); border-top: 1px solid var(--border); border-radius: 14px 14px 0 0; z-index: 51; overflow-y: auto; -webkit-overflow-scrolling: touch; transform: translateY(100%); transition: transform 0.28s cubic-bezier(0.32,0.72,0,1); }
+    .drawer.open { transform: translateY(0); }
+    .drawer-handle { width: 34px; height: 4px; background: var(--border); border-radius: 2px; margin: 10px auto 2px; }
+    .drawer-title { font-family: var(--sans); font-size: 13px; font-weight: 700; color: var(--text-bright); padding: 8px 18px 10px; border-bottom: 1px solid var(--border); }
+    .drawer-sections { padding: 6px 0 20px; }
+    .drawer-group-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); padding: 10px 18px 4px; }
+    .drawer-item { display: block; padding: 10px 18px; color: var(--text-dim); text-decoration: none; font-size: 13px; border-left: 2px solid transparent; -webkit-tap-highlight-color: transparent; }
+    .drawer-item:active { color: var(--accent); border-left-color: var(--accent); background: rgba(74,255,180,0.05); }
+    main { flex: 1; padding: 36px 20px 48px; min-width: 0; max-width: 860px; }
+    section { margin-bottom: 56px; }
+    .section-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .section-num { font-size: 11px; color: var(--accent); font-weight: 700; letter-spacing: 0.1em; }
+    h2 { font-family: var(--sans); font-size: 19px; font-weight: 800; color: var(--text-bright); letter-spacing: -0.4px; }
+    h3 { font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--text-bright); margin: 24px 0 10px; display: flex; align-items: center; gap: 8px; }
+    h3::before { content: ''; width: 3px; height: 13px; background: var(--accent2); border-radius: 2px; flex-shrink: 0; }
+    p { color: var(--text); margin-bottom: 10px; line-height: 1.8; }
+    .hero { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px 16px; margin-bottom: 20px; }
+    .hero-desc { font-size: 13px; color: var(--text); line-height: 1.8; }
+    .hero-meta { display: flex; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+    .hero-meta-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); }
+    .hero-meta-item span { color: var(--text); }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+    .dot.blue { background: var(--accent2); } .dot.orange { background: var(--accent3); } .dot.red { background: var(--accent4); }
+    .req-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .req-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; min-width: 140px; flex: 1; }
+    .req-card-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); margin-bottom: 5px; }
+    .req-card-value { font-size: 12px; color: var(--text-bright); font-weight: 500; }
+    .flag-group { margin-bottom: 22px; }
+    .flag-group-title { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent2); margin-bottom: 6px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .flag-table { width: 100%; border-collapse: collapse; }
+    .flag-table tr { border-bottom: 1px solid var(--border); }
+    .flag-table tr:last-child { border-bottom: none; }
+    .flag-table td { padding: 8px 8px; vertical-align: top; }
+    .flag-name { font-family: var(--mono); font-size: 10.5px; color: var(--accent); white-space: nowrap; padding-right: 12px; width: 1%; }
+    .flag-desc { font-size: 11.5px; color: var(--text); }
+
+    /* ── CODE BLOCKS WITH COPY ── */
+    .code-block { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 12px 0; position: relative; }
+    .code-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+    .code-label { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+    .code-header-right { display: flex; align-items: center; gap: 8px; }
+    .code-dots { display: flex; gap: 4px; }
+    .code-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .code-dot:nth-child(1) { background: #ff5f57; }
+    .code-dot:nth-child(2) { background: #febc2e; }
+    .code-dot:nth-child(3) { background: #28c840; }
+    .copy-btn {
+      display: flex; align-items: center; gap: 4px;
+      background: rgba(74,255,180,0.07); border: 1px solid rgba(74,255,180,0.2);
+      color: var(--accent); border-radius: 4px; padding: 3px 8px;
+      font-family: var(--mono); font-size: 9px; font-weight: 600;
+      cursor: pointer; letter-spacing: 0.05em;
+      transition: background 0.15s, border-color 0.15s;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .copy-btn:hover { background: rgba(74,255,180,0.14); border-color: rgba(74,255,180,0.4); }
+    .copy-btn.copied { color: #28c840; border-color: rgba(40,200,64,0.4); background: rgba(40,200,64,0.07); }
+    .copy-btn svg { flex-shrink: 0; }
+
+    pre { padding: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; font-family: var(--mono); font-size: 11.5px; line-height: 1.65; color: var(--text); }
+    pre::-webkit-scrollbar { height: 3px; }
+    pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .kw { color: var(--accent2); } .cm { color: var(--text-dim); font-style: italic; }
+    .str { color: var(--accent3); } .num { color: var(--accent); } .fn { color: #c792ea; }
+    .prompt { color: var(--accent); user-select: none; }
+    .dot-cmd { color: #f8c291; } /* .open .tables .quit etc */
+
+    .callout { display: flex; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent3); border-radius: 8px; padding: 12px 14px; margin: 12px 0; }
+    .callout.safe { border-left-color: var(--accent); }
+    .callout.info { border-left-color: var(--accent2); }
+    .callout.warn { border-left-color: var(--accent4); }
+    .callout-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+    .callout-text { font-size: 12px; color: var(--text); line-height: 1.75; }
+    .callout-text strong { color: var(--text-bright); }
+
+    /* pragma table */
+    .pragma-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+    .pragma-table tr { border-bottom: 1px solid var(--border); }
+    .pragma-table tr:last-child { border-bottom: none; }
+    .pragma-table td { padding: 7px 8px; font-size: 11.5px; vertical-align: top; }
+    .pragma-key { font-family: var(--mono); color: var(--accent); width: 1%; white-space: nowrap; padding-right: 14px; }
+    .pragma-val { color: var(--accent3); width: 1%; white-space: nowrap; padding-right: 14px; }
+    .pragma-desc { color: var(--text-dim); }
+
+    code { background: rgba(74,255,180,0.08); border: 1px solid rgba(74,255,180,0.15); color: var(--accent); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); font-size: 11px; }
+    a { color: var(--accent2); text-decoration: none; }
+    footer { border-top: 1px solid var(--border); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-dim); }
+    .footer-left { display: flex; align-items: center; gap: 7px; }
+    @media (min-width: 769px) { header { padding: 14px 24px; } main { padding: 40px 48px 56px; } .logo-icon svg { width: 40px; height: 40px; } .header-title { font-size: 17px; } footer { padding: 18px 48px; } }
+    @media (max-width: 768px) { .sidebar { display: none; } .mobile-nav { display: block; } .drawer-overlay { display: block; pointer-events: none; } main { padding: 24px 16px 40px; } h2 { font-size: 17px; } footer { flex-direction: column; gap: 6px; text-align: center; } }
+  </style>
+</head>
+<body>
+
+<div class="top-block">
+  <header>
+    <div class="header-left">
+      <div class="logo-icon">
+        <svg viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="cylTop" x1="6" y1="9" x2="32" y2="9" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#4affb4"/><stop offset="100%" stop-color="#00d4ff"/></linearGradient>
+            <linearGradient id="cylBody" x1="6" y1="10" x2="6" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1a2e28"/><stop offset="100%" stop-color="#0d1a18"/></linearGradient>
+            <linearGradient id="cylStroke" x1="6" y1="10" x2="32" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#4affb4" stop-opacity="0.8"/><stop offset="100%" stop-color="#00d4ff" stop-opacity="0.5"/></linearGradient>
+            <linearGradient id="ringGrad" x1="0" y1="0" x2="38" y2="38" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#4affb4" stop-opacity="0.9"/><stop offset="50%" stop-color="#00d4ff" stop-opacity="0.3"/><stop offset="100%" stop-color="#4affb4" stop-opacity="0.9"/></linearGradient>
+          </defs>
+          <rect x="8" y="11" width="22" height="18" rx="1" fill="url(#cylBody)" stroke="url(#cylStroke)" stroke-width="1"/>
+          <ellipse cx="19" cy="11" rx="11" ry="4" fill="#0f2a22" stroke="url(#cylTop)" stroke-width="1.2"/>
+          <ellipse cx="19" cy="11" rx="6" ry="2" fill="none" stroke="rgba(74,255,180,0.25)" stroke-width="0.7"/>
+          <line x1="10" y1="16" x2="28" y2="16" stroke="rgba(74,255,180,0.20)" stroke-width="0.8"/>
+          <line x1="10" y1="20" x2="28" y2="20" stroke="rgba(74,255,180,0.20)" stroke-width="0.8"/>
+          <line x1="10" y1="24" x2="28" y2="24" stroke="rgba(74,255,180,0.20)" stroke-width="0.8"/>
+          <circle class="dot-blink"  cx="14" cy="16" r="1.4" fill="#4affb4"/>
+          <circle class="dot-blink2" cx="19" cy="20" r="1.4" fill="#00d4ff"/>
+          <circle class="dot-blink3" cx="24" cy="24" r="1.4" fill="#4affb4"/>
+          <ellipse cx="19" cy="29" rx="11" ry="3.5" fill="none" stroke="url(#cylStroke)" stroke-width="1"/>
+          <ellipse class="ring" cx="19" cy="19" rx="17" ry="6" fill="none" stroke="url(#ringGrad)" stroke-width="1.1" stroke-dasharray="4 3"/>
+        </svg>
+      </div>
+      <div>
+        <div class="header-title">SQLite3 Module</div>
+        <div class="header-sub">Android Arm64 · Max-Feature</div>
+      </div>
+    </div>
+    <span class="version-badge">v3.53.4</span>
+  </header>
+  <nav class="mobile-nav">
+    <div class="mnav-inner">
+      <button class="mnav-btn active" onclick="mnavClick(this,'all')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>All</button>
+      <button class="mnav-btn" onclick="mnavClick(this,'overview')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Overview</button>
+      <button class="mnav-btn" onclick="mnavClick(this,'build')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Build</button>
+      <button class="mnav-btn" onclick="mnavClick(this,'usage')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Usage</button>
+      <button class="mnav-btn" onclick="mnavClick(this,'tools')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>Tools</button>
+      <button class="mnav-btn" onclick="mnavClick(this,'module')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Module</button>
+    </div>
+  </nav>
+</div>
+
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-handle"></div>
+  <div class="drawer-title" id="drawerTitle">Navigation</div>
+  <div class="drawer-sections" id="drawerSections"></div>
+</div>
+
+<div class="scroll-area" id="scrollArea">
+  <div class="layout">
+    <aside class="sidebar">
+      <span class="nav-label">Overview</span>
+      <a class="nav-item" href="#overview">What This Module Does</a>
+      <a class="nav-item" href="#requirements">Requirements</a>
+      <span class="nav-label">Build</span>
+      <a class="nav-item" href="#flags">Compile Flags</a>
+      <span class="nav-label">Usage</span>
+      <a class="nav-item" href="#session-config">Session Config</a>
+      <a class="nav-item" href="#usage-basic">Basic Usage</a>
+      <a class="nav-item" href="#usage-fts">Full-Text Search</a>
+      <a class="nav-item" href="#usage-json">JSON Functions</a>
+      <a class="nav-item" href="#usage-rtree">Geospatial / R-Tree</a>
+      <a class="nav-item" href="#usage-math">Math Functions</a>
+      <a class="nav-item" href="#usage-session">Session / Sync</a>
+      <a class="nav-item" href="#usage-percentile">Percentile &amp; Analytics</a>
+      <a class="nav-item" href="#usage-debug">Inspect &amp; Debug</a>
+      <span class="nav-label">Tools</span>
+      <a class="nav-item" href="#tool-sqldiff">sqldiff</a>
+      <a class="nav-item" href="#tool-doctor">sqlite3-doctor</a>
+      <a class="nav-item" href="#tool-helper">sqlite3-tool</a>
+      <span class="nav-label">Module</span>
+      <a class="nav-item" href="#verify">Verify Install</a>
+      <a class="nav-item" href="#uninstall">Uninstall</a>
+    </aside>
+
+    <main>
+
+      <!-- 01 OVERVIEW -->
+      <section id="overview">
+        <div class="section-header"><span class="section-num">01</span><h2>What This Module Does</h2></div>
+        <div class="hero">
+          <p class="hero-desc">Installs a <strong style="color:var(--text-bright)">standalone, max-feature <code style="background:none;border:none;color:var(--accent)">sqlite3</code> binary</strong> to <code>/system/bin/sqlite3</code>. Built from source with the Android NDK. Every stable feature enabled, tuned for stability and maximum compatibility.</p>
+          <div class="hero-meta">
+            <div class="hero-meta-item"><div class="dot"></div> Replaces <span>stock sqlite3 shell</span></div>
+            <div class="hero-meta-item"><div class="dot blue"></div> Does <span>not</span> touch libsqlite.so</div>
+            <div class="hero-meta-item"><div class="dot orange"></div> Apps <span>unaffected</span></div>
+            <div class="hero-meta-item"><div class="dot red"></div> Safe to <span>uninstall</span></div>
+          </div>
+        </div>
+        <div class="callout safe"><div class="callout-icon">🛡</div><div class="callout-text"><strong>Safe by design.</strong> Only the interactive <code>sqlite3</code> shell is replaced. <code>libsqlite.so</code> used by Android framework and all apps is untouched.</div></div>
+        <div class="callout info"><div class="callout-icon">🆕</div><div class="callout-text"><strong>New in this release.</strong>
+          <code>SQLITE_SECURE_DELETE</code> was accidentally <em>enabled</em> in every earlier build &mdash; the flag is tested with <code>#ifdef</code>, so <code>=0</code> switched it on and every <code>DELETE</code> zero-filled its freed pages. It is now gone, along with two flags that stopped existing in SQLite years ago (<code>ENABLE_JSON1</code>, <code>ENABLE_DESERIALIZE</code>).
+          The parallel sorter is enabled, <code>backup</code> uses SQLite's online backup API instead of <code>cp</code>, every helper command sets a busy timeout, and <code>build.sh</code> now reads the compile options back out of the finished binary and refuses to ship a build that does not match.
+        </div></div>
+        <div class="callout info"><div class="callout-icon">⚙</div><div class="callout-text"><strong>Wrapper architecture.</strong> The installed <code>sqlite3</code> is a lightweight shell script that detects your device RAM, sets an adaptive <code>mmap_size</code>, injects performance PRAGMAs via <code>-cmd</code>, then calls <code>sqlite3.real</code> — the actual compiled binary.</div></div>
+      </section>
+
+      <!-- 02 REQUIREMENTS -->
+      <section id="requirements">
+        <div class="section-header"><span class="section-num">02</span><h2>Requirements</h2></div>
+        <div class="req-grid">
+          <div class="req-card"><div class="req-card-label">Root Manager</div><div class="req-card-value">SukiSU Ultra<br>KernelSU<br>Magisk</div></div>
+          <div class="req-card"><div class="req-card-label">Magisk Android</div><div class="req-card-value">6.0+ (API 23+)</div></div>
+          <div class="req-card"><div class="req-card-label">KernelSU / SukiSU</div><div class="req-card-value">Android 12+</div></div>
+          <div class="req-card"><div class="req-card-label">Architecture</div><div class="req-card-value">ARM64 only</div></div>
+        </div>
+      </section>
+
+      <!-- 03 COMPILE FLAGS -->
+      <section id="flags">
+        <div class="section-header"><span class="section-num">03</span><h2>Compile Flags</h2></div>
+
+        <div class="flag-group">
+          <div class="flag-group-title">⚙ Compiler</div>
+          <table class="flag-table">
+            <tr><td class="flag-name">-O2</td><td class="flag-desc">Balanced optimization. Safe and stable — no aggressive transformations that risk miscompilation on Android.</td></tr>
+            <tr><td class="flag-name">-march=armv8-a</td><td class="flag-desc">Targets the ARMv8-A baseline. Compatible with every arm64 Android device regardless of chip generation.</td></tr>
+            <tr><td class="flag-name">-fPIE</td><td class="flag-desc">Position-Independent Executable. Required by Android for ASLR (address space layout randomization).</td></tr>
+            <tr><td class="flag-name">-pie</td><td class="flag-desc">Linker flag that pairs with <code>-fPIE</code>. Android 21+ refuses to run non-PIE executables.</td></tr>
+            <tr><td class="flag-name">-fuse-ld=lld</td><td class="flag-desc">Uses LLVM's LLD linker. Better dead-code elimination and required for correct LTO support with NDK.</td></tr>
+            <tr><td class="flag-name">-fomit-frame-pointer</td><td class="flag-desc">Frees the frame pointer register for general use. Slight speed and size gain. Safe for a CLI tool.</td></tr>
+            <tr><td class="flag-name">-fvisibility=hidden</td><td class="flag-desc">Marks all symbols as internal by default. Reduces binary size and prevents symbol leakage.</td></tr>
+            <tr><td class="flag-name">-ffunction-sections</td><td class="flag-desc">Puts each function in its own ELF section so the linker can discard unused ones via <code>--gc-sections</code>.</td></tr>
+            <tr><td class="flag-name">-fdata-sections</td><td class="flag-desc">Same as above but for data objects. Works together with <code>-ffunction-sections</code>.</td></tr>
+            <tr><td class="flag-name">-fstack-protector-strong</td><td class="flag-desc">Stack smashing protection on functions that use buffers. Stability and security without the overhead of full stack protection.</td></tr>
+          </table>
+        </div>
+
+        <div class="flag-group">
+          <div class="flag-group-title">🔗 Linker</div>
+          <table class="flag-table">
+            <tr><td class="flag-name">-Wl,--gc-sections</td><td class="flag-desc">Garbage-collects ELF sections with no references. Works with <code>-ffunction-sections</code> / <code>-fdata-sections</code>.</td></tr>
+            <tr><td class="flag-name">-Wl,--strip-all</td><td class="flag-desc">Strips all symbol and debug info from the final binary. Smaller size, nothing useful for reverse engineering.</td></tr>
+            <tr><td class="flag-name">-Wl,-O2</td><td class="flag-desc">Linker-level optimization pass. Merges identical sections and tightens the output layout.</td></tr>
+            <tr><td class="flag-name">-Wl,--build-id=none</td><td class="flag-desc">Removes the GNU build-ID note section. Shaves bytes with no practical downside for a Magisk module.</td></tr>
+            <tr><td class="flag-name">-Wl,-z,max-page-size=16384</td><td class="flag-desc">Required for Android 15+ devices with 16 KB memory pages. Without it the binary may segfault on load.</td></tr>
+            <tr><td class="flag-name">-ldl</td><td class="flag-desc">Links the dynamic linker library. SQLite shell uses <code>dlopen</code> internally even with extension loading disabled.</td></tr>
+            <tr><td class="flag-name">-lm</td><td class="flag-desc">Links the math library. Required by SQLite math functions.</td></tr>
+            <tr><td class="flag-name">-llog</td><td class="flag-desc">Links Android's logging library. Needed for correct integration with the Android runtime environment.</td></tr>
+          </table>
+        </div>
+
+        <div class="flag-group">
+          <div class="flag-group-title">🗄 Core</div>
+          <table class="flag-table">
+            <tr><td class="flag-name">-DSQLITE_THREADSAFE=1</td><td class="flag-desc">Full mutex serialization. Multiple threads can safely share a single database connection.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_USE_URI=1</td><td class="flag-desc">Enables URI filenames: <code>file:db?mode=ro&amp;cache=shared</code>. Required for read-only opens and shared-cache mode.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_OMIT_LOAD_EXTENSION</td><td class="flag-desc">Disables runtime loading of <code>.so</code> extension files. Reduces attack surface on Android.</td></tr>
+            <tr><td class="flag-name"><s>-DSQLITE_SECURE_DELETE=0</s> <span style="color:var(--text-dim)">removed</span></td><td class="flag-desc">SQLite tests this flag with <code>#ifdef</code>, not by value &mdash; <code>=0</code> still defined it and therefore <strong>enabled</strong> secure delete, zero-filling every freed page. Builds up to v3.53.4 shipped with it on by mistake. Omitting the flag is what actually turns the feature off. Use <code>PRAGMA secure_delete=ON</code> per connection if you want it.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DQS=0</td><td class="flag-desc">Disables legacy double-quoted string literals. Enforces correct SQL: double-quotes are identifiers, single-quotes are strings.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_LIKE_DOESNT_MATCH_BLOBS</td><td class="flag-desc">LIKE skips BLOB columns instead of attempting string coercion. More correct behavior and a small speedup.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_HAVE_ISNAN</td><td class="flag-desc">Use the platform <code>isnan()</code> from <code>&lt;math.h&gt;</code> instead of SQLite's own fallback. Correct NaN handling on Android.</td></tr>
+            <tr><td class="flag-name">-DHAVE_USLEEP=1</td><td class="flag-desc">Enables microsecond-precision sleep for lock retry loops. Essential for correct busy-timeout behavior.</td></tr>
+            <tr><td class="flag-name">-DHAVE_MALLOC_USABLE_SIZE=1</td><td class="flag-desc">Lets SQLite ask bionic for the true size of an allocation instead of tracking it itself. Slightly less per-allocation overhead.</td></tr>
+          </table>
+        </div>
+
+        <div class="flag-group">
+          <div class="flag-group-title">⚡ Performance &amp; Memory</div>
+          <table class="flag-table">
+            <tr><td class="flag-name">-DSQLITE_TEMP_STORE=2</td><td class="flag-desc">Temporary tables and indices default to RAM, but <code>PRAGMA temp_store</code> can still override it. Was <code>=3</code>, which forced memory unconditionally and could push the process into OOM on a large temp table.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DEFAULT_MEMSTATUS=0</td><td class="flag-desc">Disables per-allocation memory accounting. Removes overhead from every malloc/free call.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_MAX_WORKER_THREADS=4</td><td class="flag-desc">Upper bound for the parallel sorter. Was implicitly 0, which disabled parallel sorting entirely.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DEFAULT_WORKER_THREADS=2</td><td class="flag-desc">Two sorter threads by default &mdash; noticeably faster <code>CREATE INDEX</code> and large <code>ORDER BY</code> on a multi-core phone.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_SORTER_REFERENCES</td><td class="flag-desc">The sorter keeps rowid references instead of whole rows where it can, cutting memory use when sorting wide tables.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DEFAULT_CACHE_SIZE=-16000</td><td class="flag-desc">Compile-time default page cache ~16MB. Overridden at runtime to -20000 by the session wrapper.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_STMTJRNL_SPILL=-1</td><td class="flag-desc">Statement journals never spill to disk — always stay in RAM.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1</td><td class="flag-desc">WAL-mode sync defaults to NORMAL. Faster on flash without sacrificing safety.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DEFAULT_SYNCHRONOUS=1</td><td class="flag-desc">Default journal-mode sync is NORMAL. Balance between data safety and write speed.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DEFAULT_FOREIGN_KEYS=1</td><td class="flag-desc">FK enforcement ON by default. No need to run <code>PRAGMA foreign_keys=ON</code> every session.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DEFAULT_MMAP_SIZE=268435456</td><td class="flag-desc">Compile-time mmap default 256MB. Overridden at runtime by adaptive RAM detection in wrapper.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_MAX_MMAP_SIZE=1099511627776</td><td class="flag-desc">Maximum allowed mmap window 1TB. Removes the ceiling for very large databases.</td></tr>
+          </table>
+        </div>
+
+        <div class="flag-group">
+          <div class="flag-group-title">🔍 Full-Text Search</div>
+          <table class="flag-table">
+            <tr><td class="flag-name">-DSQLITE_ENABLE_FTS3_PARENTHESIS</td><td class="flag-desc">Extends FTS3/FTS4 query syntax to support parenthesized boolean expressions: <code>word1 AND (word2 OR word3)</code>.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_FTS4</td><td class="flag-desc">Full-Text Search v4. Automatically includes FTS3. Required to read Android system DBs (contacts, calendar, SMS).</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_FTS5</td><td class="flag-desc">Full-Text Search v5. Completely independent engine from FTS4. Faster ranking, BM25 scoring, prefix queries, highlight/snippet.</td></tr>
+          </table>
+        </div>
+
+        <div class="flag-group">
+          <div class="flag-group-title">🌐 JSON · 📍 Geospatial · 📊 Stats &amp; Math</div>
+          <table class="flag-table">
+            <tr><td class="flag-name"><s>-DSQLITE_ENABLE_JSON1</s> <span style="color:var(--text-dim)">removed</span></td><td class="flag-desc">This macro no longer exists anywhere in the SQLite source. JSON has been built in since 3.38, so the flag did nothing and <code>sqlite_compileoption_used('ENABLE_JSON1')</code> returned 0 &mdash; which looked like a broken build. Every JSON function is still available.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_RTREE</td><td class="flag-desc">R-Tree spatial indexing. Fast bounding-box queries on coordinate data.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_GEOPOLY</td><td class="flag-desc">Polygon-based geospatial extension on top of R-Tree. Containment and overlap queries on arbitrary polygons.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_STAT4</td><td class="flag-desc">Histogram statistics on index columns during <code>ANALYZE</code>. Better query planner decisions.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_MATH_FUNCTIONS</td><td class="flag-desc">Adds <code>sin()</code>, <code>cos()</code>, <code>sqrt()</code>, <code>pow()</code>, <code>log()</code>, <code>floor()</code>, <code>ceil()</code>, <code>pi()</code> directly in SQL.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_PERCENTILE</td><td class="flag-desc">Adds <code>percentile()</code>, <code>percentile_cont()</code>, <code>percentile_disc()</code> aggregate functions.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_OFFSET_SQL_FUNC</td><td class="flag-desc">Enables <code>sqlite_offset(column)</code> — returns byte offset of a column value in the DB file.</td></tr>
+          </table>
+        </div>
+
+        <div class="flag-group">
+          <div class="flag-group-title">↻ Session · 🔬 Virtual Tables · 🔧 Developer</div>
+          <table class="flag-table">
+            <tr><td class="flag-name">-DSQLITE_ENABLE_SESSION</td><td class="flag-desc">Record DB changes as a changeset blob, apply to another database. Enables sync workflows.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_PREUPDATE_HOOK</td><td class="flag-desc">Fires before every UPDATE/DELETE with old row values. Mandatory dependency for SESSION.</td></tr>
+            <tr><td class="flag-name"><s>-DSQLITE_ENABLE_DESERIALIZE</s> <span style="color:var(--text-dim)">removed</span></td><td class="flag-desc">Also no longer a real macro. Deserialize is on by default since 3.36 and is switched off with <code>SQLITE_OMIT_DESERIALIZE</code>, which this build does not use. <code>sqlite3_deserialize()</code> works exactly as before.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_SNAPSHOT</td><td class="flag-desc">Open a read transaction against a specific historical WAL snapshot &mdash; consistent multi-step reads while writers keep going.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_RBU</td><td class="flag-desc">Resumable Bulk Update: apply a large update to a live database in interruptible chunks without holding a long write lock.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_UNLOCK_NOTIFY</td><td class="flag-desc">Unlock-notification API. Threads waiting on a locked DB are notified instead of polling.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_DBSTAT_VTAB</td><td class="flag-desc"><code>dbstat</code> virtual table — page-level statistics of the database file.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_DBPAGE_VTAB</td><td class="flag-desc"><code>dbpage</code> virtual table — raw read/write access to every page of the DB file.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_STMTVTAB</td><td class="flag-desc"><code>sqlite_stmt</code> virtual table — lists all open prepared statements.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_BYTECODE_VTAB</td><td class="flag-desc"><code>bytecode</code> virtual table — exposes VDBE bytecode of a statement as rows.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_CARRAY</td><td class="flag-desc"><code>carray</code> virtual table — bind a C array to a virtual table for SQL joins.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_COLUMN_METADATA</td><td class="flag-desc">Enables <code>sqlite3_column_table_name()</code> and related APIs for column origin info.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_NORMALIZE</td><td class="flag-desc">Enables <code>sqlite3_normalized_sql()</code> — replaces all literals with <code>?</code> for query logging.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT</td><td class="flag-desc">Adds <code>LIMIT</code> and <code>ORDER BY</code> to <code>UPDATE</code> and <code>DELETE</code> statements.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_EXPLAIN_COMMENTS</td><td class="flag-desc">Human-readable comments in <code>EXPLAIN</code> output. Makes VDBE opcode listing easier to read.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_UNKNOWN_SQL_FUNCTION</td><td class="flag-desc">Suppresses "no such function" in <code>EXPLAIN</code> mode. Plan queries with UDFs without executing them.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_SOUNDEX</td><td class="flag-desc">Adds <code>soundex()</code> for phonetic string matching.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_API_ARMOR</td><td class="flag-desc">Runtime sanity checks on public API entry points. Catches NULL pointers, closed handles.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_NULL_TRIM</td><td class="flag-desc">Trailing NULLs not stored in B-Tree records. Reduces row size for sparse tables.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_STMT_SCANSTATUS <span style="color:var(--text-dim)">opt-in</span></td><td class="flag-desc">Per-statement scan statistics, powering <code>.scanstats</code>. It adds counters to <em>every</em> <code>sqlite3_step()</code> call whether you use them or not, so it is off by default now. Rebuild with <code>WITH_SCANSTATUS=1 ./build.sh</code> to get it back.</td></tr>
+          </table>
+        </div>
+
+        <div class="callout info"><div class="callout-icon">💡</div><div class="callout-text"><strong>FTS3 / FTS4 / FTS5 are all included.</strong> FTS5 is a completely separate engine — no shared code with FTS4. FTS4 is kept because Android system databases use FTS4 tables. <code>FTS3_PARENTHESIS</code> is independent from both and extends FTS4 query syntax.</div></div>
+      </section>
+
+      <!-- 04 SESSION CONFIG -->
+      <section id="session-config">
+        <div class="section-header"><span class="section-num">04</span><h2>Session Config</h2></div>
+        <p>The module uses a <strong style="color:var(--text-bright)">wrapper + real binary</strong> architecture. PRAGMAs are injected automatically via <code>-cmd</code> on every shell start — no <code>.sqliterc</code> dependency, no <code>$HOME</code> issues.</p>
+
+        <h3>Auto-applied on every session start</h3>
+        <div class="callout safe"><div class="callout-icon">✓</div><div class="callout-text">These are always active. You never need to type them manually.</div></div>
+        <table class="pragma-table">
+          <tr><td class="pragma-key">cache_size</td><td class="pragma-val">-20000</td><td class="pragma-desc">~20MB page cache in RAM. Overrides compile-time default of -16000.</td></tr>
+          <tr><td class="pragma-key">temp_store</td><td class="pragma-val">MEMORY</td><td class="pragma-desc">Temp tables stay in RAM, not on flash.</td></tr>
+          <tr><td class="pragma-key">busy_timeout</td><td class="pragma-val">5000</td><td class="pragma-desc">Wait up to 5 seconds on a locked DB instead of failing immediately.</td></tr>
+          <tr><td class="pragma-key">mmap_size</td><td class="pragma-val">adaptive</td><td class="pragma-desc">64MB &lt;3GB RAM · 128MB 3–6GB · 256MB &gt;6GB. Detected at startup from <code>/proc/meminfo</code>.</td></tr>
+          <tr><td class="pragma-key">synchronous</td><td class="pragma-val">NORMAL</td><td class="pragma-desc">Balanced speed/safety. Applied on interactive sessions only.</td></tr>
+          <tr><td class="pragma-key">wal_autocheckpoint</td><td class="pragma-val">500</td><td class="pragma-desc">Checkpoint WAL after ~2MB. Applied on interactive sessions only.</td></tr>
+          <tr><td class="pragma-key">foreign_keys</td><td class="pragma-val">ON</td><td class="pragma-desc">FK enforcement. Applied on interactive sessions only.</td></tr>
+          <tr><td class="pragma-key">recursive_triggers</td><td class="pragma-val">ON</td><td class="pragma-desc">Triggers can call themselves. Applied on interactive sessions only.</td></tr>
+          <tr><td class="pragma-key">analysis_limit</td><td class="pragma-val">1000</td><td class="pragma-desc">ANALYZE samples up to 1000 rows per index. Applied on interactive sessions only.</td></tr>
+        </table>
+
+        <h3>Full config file — manual use</h3>
+        <p>Deployed to <code>/data/local/.sqliterc-full</code>. Use when you need the commented-out dangerous PRAGMAs for personal databases.</p>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Load full config on a specific DB</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3 -init /data/local/.sqliterc-full /data/local/tmp/mydb.db</pre>
+        </div>
+
+        <div class="callout warn"><div class="callout-icon">⚠</div><div class="callout-text"><strong>Interactive vs DB session.</strong> When you open sqlite3 with a DB path, <code>journal_mode</code>, <code>foreign_keys</code>, and <code>wal_autocheckpoint</code> are intentionally NOT injected — system databases may reject them. Only safe PRAGMAs are applied.</div></div>
+      </section>
+
+      <!-- 05 BASIC USAGE -->
+      <section id="usage-basic">
+        <div class="section-header"><span class="section-num">05</span><h2>Basic Usage</h2></div>
+        <p>All commands require root. Run from Termux or any root shell or su -c command </p>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Open shell (in-memory)</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Open or create a DB file</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3 /data/local/tmp/mydb.db</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Open read-only (URI)</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3 "file:/data/local/tmp/mydb.db?mode=ro"</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Dot commands (CLI only — not SQL)</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="dot-cmd">.open</span> /data/local/tmp/other.db    <span class="cm">-- switch to another DB without restarting</span>
+<span class="dot-cmd">.tables</span>                            <span class="cm">-- list all tables</span>
+<span class="dot-cmd">.schema</span> users                      <span class="cm">-- show CREATE statement for a table</span>
+<span class="dot-cmd">.headers</span> on                        <span class="cm">-- show column names in output</span>
+<span class="dot-cmd">.mode</span> column                       <span class="cm">-- aligned column output</span>
+<span class="dot-cmd">.mode</span> box                          <span class="cm">-- box-drawing table output</span>
+<span class="dot-cmd">.output</span> /data/local/tmp/out.txt    <span class="cm">-- redirect output to file</span>
+<span class="dot-cmd">.output</span> stdout                     <span class="cm">-- restore output to screen</span>
+<span class="dot-cmd">.read</span> /data/local/tmp/script.sql   <span class="cm">-- execute a SQL file</span>
+<span class="dot-cmd">.dump</span>                              <span class="cm">-- dump entire DB as SQL</span>
+<span class="dot-cmd">.quit</span>                              <span class="cm">-- exit the shell</span></pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Basic SQL</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">CREATE TABLE</span> users (id <span class="kw">INTEGER PRIMARY KEY</span>, name <span class="kw">TEXT</span>, age <span class="kw">INTEGER</span>);
+<span class="kw">INSERT INTO</span> users <span class="kw">VALUES</span> (<span class="num">1</span>, <span class="str">'Alice'</span>, <span class="num">30</span>);
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> age &gt; <span class="num">20</span>;</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">WAL mode (recommended for personal DBs)</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">PRAGMA</span> journal_mode = WAL;
+<span class="kw">PRAGMA</span> synchronous = NORMAL;
+<span class="kw">PRAGMA</span> cache_size = -20000;</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">System databases</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db
+sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
+        </div>
+      </section>
+
+      <!-- 06 FTS -->
+      <section id="usage-fts">
+        <div class="section-header"><span class="section-num">06</span><h2>Full-Text Search</h2></div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">FTS5 — create and search</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">CREATE VIRTUAL TABLE</span> docs <span class="kw">USING</span> fts5(title, body);
+<span class="kw">INSERT INTO</span> docs <span class="kw">VALUES</span>(<span class="str">'SQLite Guide'</span>, <span class="str">'Fast embedded database engine'</span>);
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> docs <span class="kw">WHERE</span> docs <span class="kw">MATCH</span> <span class="str">'database'</span>;
+<span class="kw">SELECT</span> *, <span class="fn">bm25</span>(docs) <span class="kw">AS</span> rank <span class="kw">FROM</span> docs <span class="kw">WHERE</span> docs <span class="kw">MATCH</span> <span class="str">'embedded'</span> <span class="kw">ORDER BY</span> rank;
+<span class="kw">SELECT</span> <span class="fn">snippet</span>(docs, <span class="num">1</span>, <span class="str">'&lt;b&gt;'</span>, <span class="str">'&lt;/b&gt;'</span>, <span class="str">'...'</span>, <span class="num">10</span>) <span class="kw">FROM</span> docs <span class="kw">WHERE</span> docs <span class="kw">MATCH</span> <span class="str">'engine'</span>;</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">FTS4 — Android system DB compatibility</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">CREATE VIRTUAL TABLE</span> notes <span class="kw">USING</span> fts4(content);
+<span class="kw">INSERT INTO</span> notes <span class="kw">VALUES</span>(<span class="str">'hello world'</span>);
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> notes <span class="kw">WHERE</span> notes <span class="kw">MATCH</span> <span class="str">'hello'</span>;
+<span class="cm">-- parenthesized boolean (FTS3_PARENTHESIS)</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> notes <span class="kw">WHERE</span> notes <span class="kw">MATCH</span> <span class="str">'hello AND (world OR earth)'</span>;</pre>
+        </div>
+      </section>
+
+      <!-- 07 JSON -->
+      <section id="usage-json">
+        <div class="section-header"><span class="section-num">07</span><h2>JSON Functions</h2></div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Extract &amp; build</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">SELECT</span> <span class="fn">json_extract</span>(<span class="str">'{"name":"Alice","age":30}'</span>, <span class="str">'$.name'</span>);  <span class="cm">-- Alice</span>
+<span class="kw">SELECT</span> <span class="fn">json_object</span>(<span class="str">'key'</span>, <span class="str">'val'</span>, <span class="str">'n'</span>, <span class="num">42</span>);
+<span class="kw">SELECT</span> <span class="fn">json_array</span>(<span class="num">1</span>, <span class="num">2</span>, <span class="str">'three'</span>);
+<span class="kw">SELECT</span> key, value <span class="kw">FROM</span> <span class="fn">json_each</span>(<span class="str">'{"a":1,"b":2,"c":3}'</span>);
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="fn">json_tree</span>(<span class="str">'{"x":{"y":99}}'</span>);</pre>
+        </div>
+      </section>
+
+      <!-- 08 RTREE -->
+      <section id="usage-rtree">
+        <div class="section-header"><span class="section-num">08</span><h2>Geospatial / R-Tree</h2></div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">R-Tree bounding box</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">CREATE VIRTUAL TABLE</span> geo <span class="kw">USING</span> rtree(id, minLat, maxLat, minLon, maxLon);
+<span class="kw">INSERT INTO</span> geo <span class="kw">VALUES</span>(<span class="num">1</span>, <span class="num">39.0</span>, <span class="num">39.1</span>, <span class="num">26.5</span>, <span class="num">26.6</span>);
+<span class="kw">SELECT</span> id <span class="kw">FROM</span> geo
+<span class="kw">WHERE</span> minLat &gt;= <span class="num">38.9</span> <span class="kw">AND</span> maxLat &lt;= <span class="num">39.2</span>
+  <span class="kw">AND</span> minLon &gt;= <span class="num">26.4</span> <span class="kw">AND</span> maxLon &lt;= <span class="num">26.7</span>;</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Geopoly polygon</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">CREATE VIRTUAL TABLE</span> zones <span class="kw">USING</span> geopoly(name);
+<span class="kw">SELECT</span> name <span class="kw">FROM</span> zones
+<span class="kw">WHERE</span> <span class="fn">geopoly_contains_point</span>(shape, <span class="num">26.55</span>, <span class="num">39.05</span>);</pre>
+        </div>
+      </section>
+
+      <!-- 09 MATH -->
+      <section id="usage-math">
+        <div class="section-header"><span class="section-num">09</span><h2>Math Functions</h2></div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Built-in math</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">SELECT</span> <span class="fn">sqrt</span>(<span class="num">144</span>);               <span class="cm">-- 12.0</span>
+<span class="kw">SELECT</span> <span class="fn">pow</span>(<span class="num">2</span>, <span class="num">10</span>);              <span class="cm">-- 1024.0</span>
+<span class="kw">SELECT</span> <span class="fn">log</span>(<span class="num">2.718281828</span>);       <span class="cm">-- ~1.0</span>
+<span class="kw">SELECT</span> <span class="fn">sin</span>(<span class="fn">pi</span>() / <span class="num">2</span>);          <span class="cm">-- 1.0</span>
+<span class="kw">SELECT</span> <span class="fn">floor</span>(<span class="num">3.9</span>), <span class="fn">ceil</span>(<span class="num">3.1</span>);  <span class="cm">-- 3 | 4</span></pre>
+        </div>
+      </section>
+
+      <!-- 10 SESSION SYNC -->
+      <section id="usage-session">
+        <div class="section-header"><span class="section-num">10</span><h2>Session / Sync</h2></div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Verify session support</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_SESSION'</span>);       <span class="cm">-- 1</span>
+<span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_PREUPDATE_HOOK'</span>); <span class="cm">-- 1</span>
+<span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_DESERIALIZE'</span>);   <span class="cm">-- 1</span></pre>
+        </div>
+      </section>
+
+      <!-- 11 PERCENTILE -->
+      <section id="usage-percentile">
+        <div class="section-header"><span class="section-num">11</span><h2>Percentile &amp; Analytics</h2></div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Setup &amp; queries</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">CREATE TABLE</span> metrics (value <span class="kw">REAL</span>);
+<span class="kw">INSERT INTO</span> metrics <span class="kw">VALUES</span>(<span class="num">10</span>),(<span class="num">20</span>),(<span class="num">30</span>),(<span class="num">40</span>),(<span class="num">100</span>);
+
+<span class="kw">SELECT</span> <span class="fn">percentile</span>(value, <span class="num">50</span>) <span class="kw">FROM</span> metrics;   <span class="cm">-- 30.0 (median)</span>
+<span class="kw">SELECT</span> <span class="fn">percentile_cont</span>(<span class="num">0.95</span>) <span class="kw">WITHIN GROUP</span> (<span class="kw">ORDER BY</span> value) <span class="kw">FROM</span> metrics;
+
+<span class="kw">SELECT</span>
+  <span class="fn">percentile</span>(response_ms, <span class="num">50</span>) <span class="kw">AS</span> p50,
+  <span class="fn">percentile</span>(response_ms, <span class="num">95</span>) <span class="kw">AS</span> p95,
+  <span class="fn">percentile</span>(response_ms, <span class="num">99</span>) <span class="kw">AS</span> p99
+<span class="kw">FROM</span> requests;</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Scan status</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_STMT_SCANSTATUS'</span>); <span class="cm">-- 1</span>
+<span class="dot-cmd">.scanstatus</span> on
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> age &gt; <span class="num">25</span>;
+<span class="cm">-- output: rows visited · rows output · estimated rows</span></pre>
+        </div>
+      </section>
+
+      <!-- 12 DEBUG -->
+      <section id="usage-debug">
+        <div class="section-header"><span class="section-num">12</span><h2>Inspect &amp; Debug</h2></div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">EXPLAIN</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">EXPLAIN QUERY PLAN</span> <span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> age &gt; <span class="num">25</span>;
+<span class="kw">EXPLAIN</span> <span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> age &gt; <span class="num">25</span>;</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Compile options &amp; integrity</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="fn">pragma_compile_options</span>();
+<span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_API_ARMOR'</span>); <span class="cm">-- 1</span>
+<span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'DQS'</span>);             <span class="cm">-- 0</span>
+<span class="kw">PRAGMA</span> integrity_check;
+<span class="kw">PRAGMA</span> foreign_key_check;</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">DB stats</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">PRAGMA</span> page_count;     <span class="cm">-- total pages</span>
+<span class="kw">PRAGMA</span> freelist_count; <span class="cm">-- deleted/free pages</span>
+<span class="kw">PRAGMA</span> page_size;      <span class="cm">-- page size in bytes</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> dbstat;  <span class="cm">-- page-level breakdown</span></pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Soundex</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="kw">SELECT</span> <span class="fn">soundex</span>(<span class="str">'Robert'</span>);  <span class="cm">-- R163</span>
+<span class="kw">SELECT</span> <span class="fn">soundex</span>(<span class="str">'Rupert'</span>);  <span class="cm">-- R163 (same)</span></pre>
+        </div>
+      </section>
+
+
+      <!-- 13 SQLDIFF -->
+      <section id="tool-sqldiff">
+        <div class="section-header"><span class="section-num">13</span><h2>sqldiff — Compare Databases</h2></div>
+        <p>Compares two SQLite databases and outputs the SQL needed to transform one into the other. Useful for auditing changes, migrations and backups.</p>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Basic usage</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="cm">-- Show all SQL changes to transform db1 into db2</span>
+sqldiff db1.db db2.db
+
+<span class="cm">-- Only schema differences</span>
+sqldiff --schema db1.db db2.db
+
+<span class="cm">-- Only one specific table</span>
+sqldiff --table users db1.db db2.db
+
+<span class="cm">-- Summary only (no SQL output)</span>
+sqldiff --summary db1.db db2.db</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Wrap in transaction</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqldiff --transaction db1.db db2.db | sqlite3 db1.db</pre>
+        </div>
+
+        <div class="callout info"><div class="callout-icon">💡</div><div class="callout-text"><strong>Backup workflow.</strong> Make a backup with <code>sqlite3-tool backup</code>, modify the original, then use <code>sqldiff</code> to see exactly what changed.</div></div>
+      </section>
+
+      <!-- 14 SQLITE3-DOCTOR -->
+      <section id="tool-doctor">
+        <div class="section-header"><span class="section-num">14</span><h2>sqlite3-doctor — Full Diagnostics</h2></div>
+        <p>Runs a comprehensive health check on any SQLite database file. Checks integrity, WAL state, fragmentation, foreign keys and table stats.</p>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Usage</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3-doctor /data/local/tmp/mydb.db
+sqlite3-doctor /data/data/com.example/databases/app.db</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Example output</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div></div>
+          <pre>────────────────────────────────────────
+  sqlite3-doctor v1.0
+────────────────────────────────────────
+[ File ]
+  [OK]      Valid SQLite3 file
+  [INFO]    File size: 8.0K
+  [OK]      No WAL file (clean state)
+[ Database Info ]
+  [INFO]    Page size:    4096 bytes
+  [INFO]    Journal mode: delete
+  [INFO]    Encoding:     UTF-8
+[ Integrity ]
+  Running quick_check...
+  [OK]      quick_check passed
+  Running integrity_check (may take a moment)...
+  [OK]      integrity_check passed
+[ Foreign Keys ]
+  [OK]      No foreign key violations
+────────────────────────────────────────
+  ✓ Database looks healthy — no issues found.</pre>
+        </div>
+
+        <div class="callout warn"><div class="callout-icon">⚠</div><div class="callout-text"><strong>Requires root</strong> for system databases. Run as <code>su -c sqlite3-doctor &lt;db&gt;</code> or from inside a root shell.</div></div>
+      </section>
+
+      <!-- 15 SQLITE3-TOOL -->
+      <section id="tool-helper">
+        <div class="section-header"><span class="section-num">15</span><h2>sqlite3-tool — Helper Commands</h2></div>
+        <p>A convenience wrapper with 16 ready-to-use commands. No SQL knowledge required for common maintenance tasks. Every command sets a busy timeout first, so touching a live database waits instead of failing immediately with <code>database is locked</code>.</p>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">All commands</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3-tool integrity    &lt;db&gt;           <span class="cm">-- PRAGMA integrity_check</span>
+sqlite3-tool vacuum       &lt;db&gt;           <span class="cm">-- defragment and shrink</span>
+sqlite3-tool analyze      &lt;db&gt;           <span class="cm">-- update query planner stats</span>
+sqlite3-tool optimize     &lt;db&gt;           <span class="cm">-- PRAGMA optimize</span>
+sqlite3-tool wal-checkpoint &lt;db&gt;         <span class="cm">-- PRAGMA wal_checkpoint(FULL)</span>
+sqlite3-tool tables       &lt;db&gt;           <span class="cm">-- list tables with row counts</span>
+sqlite3-tool indexes      &lt;db&gt;           <span class="cm">-- list all indexes</span>
+sqlite3-tool schema       &lt;db&gt; [table]   <span class="cm">-- show CREATE statements</span>
+sqlite3-tool size         &lt;db&gt;           <span class="cm">-- page stats and file size</span>
+sqlite3-tool info         &lt;db&gt;           <span class="cm">-- quick database summary</span>
+sqlite3-tool biggest      &lt;db&gt; [n]       <span class="cm">-- largest objects on disk (dbstat)</span>
+sqlite3-tool backup       &lt;db&gt; &lt;dest&gt;    <span class="cm">-- online backup, then verified</span>
+sqlite3-tool restore      &lt;backup&gt; &lt;dest&gt; <span class="cm">-- restore from backup</span>
+sqlite3-tool doctor       &lt;db&gt;           <span class="cm">-- run sqlite3-doctor</span>
+sqlite3-tool compile-options [filter]    <span class="cm">-- how this sqlite3 was built</span>
+sqlite3-tool version                     <span class="cm">-- tool and SQLite versions</span></pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Practical examples</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="cm">-- Check and repair fragmentation</span>
+sqlite3-tool integrity /data/local/tmp/mydb.db
+sqlite3-tool vacuum    /data/local/tmp/mydb.db
+
+<span class="cm">-- Safe backup before modifying a system DB</span>
+sqlite3-tool backup /data/data/com.example/databases/app.db /sdcard/app_backup.db
+
+<span class="cm">-- Quick overview of any database</span>
+sqlite3-tool info /data/local/tmp/mydb.db
+
+<span class="cm">-- List all tables with row counts</span>
+sqlite3-tool tables /data/local/tmp/mydb.db</pre>
+        </div>
+
+        <div class="callout safe"><div class="callout-icon">🛡</div><div class="callout-text"><strong>Backup uses SQLite's online backup API (<code>.backup</code>), not a file copy. It is safe on a live database, needs no write access to the source, and the result is checked with <code>integrity_check</code> before the command reports success. Earlier versions ran <code>wal_checkpoint(FULL)</code> and then <code>cp</code> &mdash; that writes to the source and is not atomic, so a concurrent writer could produce a corrupt backup. Restore now deletes any stale <code>-wal</code> and <code>-shm</code> next to the destination instead of copying them across.</div></div>
+      </section>
+
+      <!-- 16 VERIFY -->
+      <section id="verify">
+        <div class="section-header"><span class="section-num">16</span><h2>Verify After Install</h2></div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Version</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3 --version
+sqlite3.real --version    <span class="cm">-- verify real binary directly</span></pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Verify session PRAGMAs are active</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="cm">-- run inside sqlite3 shell (no DB path)</span>
+<span class="kw">PRAGMA</span> cache_size;    <span class="cm">-- -16000  (compile-time default)</span>
+<span class="kw">PRAGMA</span> busy_timeout;  <span class="cm">-- 5000    (set by the wrapper)</span>
+<span class="kw">PRAGMA</span> temp_store;    <span class="cm">-- 2       (memory, overridable)</span>
+
+<span class="cm">-- NOTE: .open makes a NEW connection and resets busy_timeout and</span>
+<span class="cm">-- mmap_size back to the compiled defaults. Pass the database on the</span>
+<span class="cm">-- command line if you want the wrapper settings to apply to it.</span></pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Verify mmap (needs a real DB file)</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3 /data/local/tmp/test.db
+<span class="kw">PRAGMA</span> mmap_size;    <span class="cm">-- 268435456 (or less on low-RAM devices)</span>
+<span class="dot-cmd">.quit</span>
+rm -f /data/local/tmp/test.db</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Test FTS5</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3 /data/local/tmp/t.db "CREATE VIRTUAL TABLE t USING fts5(c); INSERT INTO t VALUES('hello world'); SELECT * FROM t WHERE t MATCH 'hello';"</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Test FTS4</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3 /data/local/tmp/t.db "CREATE VIRTUAL TABLE t4 USING fts4(c); INSERT INTO t4 VALUES('hello world'); SELECT * FROM t4 WHERE t4 MATCH 'hello';"</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Test percentile &amp; scanstatus</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3-tool compile-options              <span class="cm">-- everything, one per line</span>
+sqlite3-tool compile-options WORKER       <span class="cm">-- filter</span>
+
+<span class="cm">-- or straight from SQL:</span>
+sqlite3 :memory: "SELECT sqlite_compileoption_used('ENABLE_PERCENTILE');"   <span class="cm">-- 1</span>
+sqlite3 :memory: "SELECT sqlite_compileoption_used('SECURE_DELETE');"       <span class="cm">-- 0  (as it should be)</span>
+
+<span class="cm">-- Do NOT test ENABLE_JSON1 or ENABLE_DESERIALIZE: those macros no longer</span>
+<span class="cm">-- exist, so they always report 0 even though the features are present.</span>
+sqlite3 :memory: "SELECT json_extract('{\"a\":1}','$.a');"                   <span class="cm">-- 1</span></pre>
+        </div>
+      </section>
+
+      <!-- 14 UNINSTALL -->
+      <section id="uninstall">
+        <div class="section-header"><span class="section-num">17</span><h2>Uninstall</h2></div>
+        <div class="callout safe">
+          <div class="callout-icon">✓</div>
+          <div class="callout-text">
+            Remove via <strong>SukiSU Ultra / KernelSU / Magisk</strong> and reboot.<br>
+            The included <code>uninstall.sh</code> automatically removes all deployed files:<br>
+            <code>/data/local/.sqliterc-full</code> and any leftover tool temp files in <code>/data/local/tmp/</code>.
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        <div class="footer-left"><div class="dot"></div> SQLite3 v3.53.4 · Android Arm64 · Tears Burn</div>
+        <a href="https://github.com/nikakvo/sqlite3-android-arm64-only" target="_blank">GitHub →</a>
+      </footer>
+
+    </main>
+  </div>
+</div>
+
+<script>
+  // ── Copy button ──────────────────────────────────────────────────
+  function copyCode(btn) {
+    var pre = btn.closest('.code-block').querySelector('pre');
+    var text = pre.innerText || pre.textContent;
+    navigator.clipboard.writeText(text.trim()).then(function() {
+      btn.classList.add('copied');
+      btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>DONE';
+      setTimeout(function() {
+        btn.classList.remove('copied');
+        btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY';
+      }, 1800);
+    });
+  }
+
+  // ── Nav data ─────────────────────────────────────────────────────
+  const navData = [
+    { group: 'Overview', items: [
+      { href: '#overview', label: 'What This Module Does' },
+      { href: '#requirements', label: 'Requirements' },
+    ]},
+    { group: 'Build', items: [
+      { href: '#flags', label: 'Compile Flags' },
+    ]},
+    { group: 'Usage', items: [
+      { href: '#session-config', label: 'Session Config' },
+      { href: '#usage-basic', label: 'Basic Usage' },
+      { href: '#usage-fts', label: 'Full-Text Search' },
+      { href: '#usage-json', label: 'JSON Functions' },
+      { href: '#usage-rtree', label: 'Geospatial / R-Tree' },
+      { href: '#usage-math', label: 'Math Functions' },
+      { href: '#usage-session', label: 'Session / Sync' },
+      { href: '#usage-percentile', label: 'Percentile & Analytics' },
+      { href: '#usage-debug', label: 'Inspect & Debug' },
+    ]},
+    { group: 'Tools', items: [
+      { href: '#tool-sqldiff', label: 'sqldiff' },
+      { href: '#tool-doctor', label: 'sqlite3-doctor' },
+      { href: '#tool-helper', label: 'sqlite3-tool' },
+    ]},
+    { group: 'Module', items: [
+      { href: '#verify', label: 'Verify Install' },
+      { href: '#uninstall', label: 'Uninstall' },
+    ]},
+  ];
+
+  const groupMap = { overview:['Overview'], build:['Build'], usage:['Usage'], tools:['Tools'], module:['Module'], all:null };
+
+  function mnavClick(btn, filter) {
+    document.querySelectorAll('.mnav-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (filter === 'all') {
+      document.getElementById('scrollArea').scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      openDrawer(filter);
+    }
+  }
+
+  function renderDrawer(filter) {
+    const groups = groupMap[filter];
+    document.getElementById('drawerTitle').textContent =
+      filter === 'all' ? 'Navigation' : filter.charAt(0).toUpperCase() + filter.slice(1);
+    document.getElementById('drawerSections').innerHTML = navData
+      .filter(g => !groups || groups.includes(g.group))
+      .map(g => `
+        <div class="drawer-group-label">${g.group}</div>
+        ${g.items.map(i => `<a class="drawer-item" href="${i.href}" onclick="closeDrawer(); scrollToId('${i.href.slice(1)}')">${i.label}</a>`).join('')}
+      `).join('');
+  }
+
+  function openDrawer(filter) {
+    renderDrawer(filter || 'all');
+    document.getElementById('drawerOverlay').classList.add('open');
+    document.getElementById('drawer').classList.add('open');
+  }
+
+  function closeDrawer() {
+    document.getElementById('drawerOverlay').classList.remove('open');
+    document.getElementById('drawer').classList.remove('open');
+  }
+
+  function scrollToId(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    setTimeout(function() {
+      document.getElementById('scrollArea').scrollTo({ top: el.offsetTop - 12, behavior: 'smooth' });
+    }, 60);
+  }
+
+  var sections = document.querySelectorAll('section[id]');
+  var navItems = document.querySelectorAll('.sidebar .nav-item');
+  var scrollArea = document.getElementById('scrollArea');
+
+  scrollArea.addEventListener('scroll', function() {
+    var scrollTop = scrollArea.scrollTop + 80;
+    var active = null;
+    sections.forEach(function(s) { if (s.offsetTop <= scrollTop) active = s.id; });
+    navItems.forEach(function(n) { n.classList.toggle('active', n.getAttribute('href') === '#' + active); });
+  });
+</script>
+
+</body>
+</html>

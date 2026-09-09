@@ -1,0 +1,55 @@
+#!/system/bin/sh
+# sqlite3 — thin wrapper around sqlite3.real
+# Part of nikakvo/sqlite3-android-arm64-only
+#
+# The previous version injected nine PRAGMAs. Five of them merely repeated a
+# compile-time default that already applies to every connection:
+#
+#   PRAGMA temp_store=MEMORY   ->  -DSQLITE_TEMP_STORE
+#   PRAGMA synchronous=NORMAL  ->  -DSQLITE_DEFAULT_SYNCHRONOUS=1
+#   PRAGMA foreign_keys=ON     ->  -DSQLITE_DEFAULT_FOREIGN_KEYS=1
+#   PRAGMA cache_size=...      ->  -DSQLITE_DEFAULT_CACHE_SIZE=-16000
+#   PRAGMA mmap_size=...       ->  -DSQLITE_DEFAULT_MMAP_SIZE=268435456
+#
+# Only two things are worth doing here:
+#   busy_timeout — has no compile-time equivalent
+#   mmap_size    — scaled to the device rather than a fixed compiled value
+#
+# Note: PRAGMAs set through -cmd apply to the connection that is open at
+# startup. Running .open inside the shell creates a NEW connection and resets
+# them; only the compile-time defaults survive that. Pass the database on the
+# command line if you want these settings to apply to it.
+#
+# Set SQLITE3_NO_WRAPPER=1 to bypass this script entirely.
+
+REAL="${0%/*}/sqlite3.real"
+[ -x "$REAL" ] || REAL="/system/bin/sqlite3.real"
+
+if [ ! -x "$REAL" ]; then
+    echo "sqlite3: sqlite3.real not found — is the module mounted?" >&2
+    exit 127
+fi
+
+if [ "${SQLITE3_NO_WRAPPER:-0}" = "1" ]; then
+    exec "$REAL" "$@"
+fi
+
+# Adaptive memory-map size. One awk call; everything else is shell builtins.
+RAM_KB=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null)
+case "$RAM_KB" in
+    '' | *[!0-9]*) RAM_KB=0 ;;
+esac
+
+if   [ "$RAM_KB" -lt 3145728 ];  then MMAP=67108864     # < 3 GB  ->  64 MB
+elif [ "$RAM_KB" -lt 6291456 ];  then MMAP=134217728    # 3–6 GB  -> 128 MB
+elif [ "$RAM_KB" -lt 12582912 ]; then MMAP=268435456    # 6–12 GB -> 256 MB
+else                                  MMAP=536870912    # > 12 GB -> 512 MB
+fi
+
+# .output juggling keeps the PRAGMA result rows off stdout.
+exec "$REAL" \
+    -cmd ".output /dev/null" \
+    -cmd "PRAGMA busy_timeout=5000;" \
+    -cmd "PRAGMA mmap_size=$MMAP;" \
+    -cmd ".output stdout" \
+    "$@"

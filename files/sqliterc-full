@@ -1,0 +1,122 @@
+-- SQLite3 Android Arm64 -- FULL session config
+-- Load manually:  sqlite3 -init /data/local/.sqliterc-full mydb.db
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WARNING: some PRAGMAs here are DANGEROUS on system databases.
+-- Everything below the "base" block is commented out -- uncomment carefully.
+--
+-- NOTE: PRAGMAs set at startup apply to the connection that is open then.
+-- Running .open inside the shell makes a NEW connection and resets all of
+-- them; only compile-time defaults survive that.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- =============================================================================
+--  BASE -- what this build already does for you
+-- =============================================================================
+-- These are compiled in, so you do NOT need to set them:
+--
+--   temp_store        -> SQLITE_TEMP_STORE=2      (memory by default)
+--   synchronous       -> SQLITE_DEFAULT_SYNCHRONOUS=1        (NORMAL)
+--   wal_synchronous   -> SQLITE_DEFAULT_WAL_SYNCHRONOUS=1    (NORMAL)
+--   foreign_keys      -> SQLITE_DEFAULT_FOREIGN_KEYS=1       (ON)
+--   cache_size        -> SQLITE_DEFAULT_CACHE_SIZE=-16000    (16 MB)
+--   mmap_size         -> SQLITE_DEFAULT_MMAP_SIZE=256 MB
+--
+-- The sqlite3 wrapper adds only what has no compile-time equivalent:
+--   busy_timeout = 5000
+--   mmap_size scaled to the RAM of this device
+--
+-- Only useful when using -init directly, without the wrapper:
+PRAGMA busy_timeout = 5000;
+
+-- =============================================================================
+--  QUERY PLANNER
+-- =============================================================================
+
+-- Bound the work PRAGMA optimize is allowed to do (recommended by SQLite).
+-- PRAGMA analysis_limit = 1000;
+-- PRAGMA optimize;
+
+-- Recursive triggers are OFF by default in SQLite. Turning them on changes
+-- semantics -- only enable it if your schema expects it.
+-- PRAGMA recursive_triggers = ON;
+
+-- =============================================================================
+--  PAGE SIZE & JOURNAL MODE -- NEW / PERSONAL databases ONLY
+--  DO NOT run on contacts2.db, mmssms.db, calendar.db or any system DB
+-- =============================================================================
+
+-- Page size -- must be set BEFORE the first write to a new database
+-- PRAGMA page_size = 4096;       -- SQLite default
+-- PRAGMA page_size = 8192;       -- better for UFS 3.1+
+-- PRAGMA page_size = 16384;      -- for very large databases (>1 GB)
+
+-- Journal mode
+-- PRAGMA journal_mode = WAL;     -- best for Android (recommended for new DBs)
+-- PRAGMA journal_mode = MEMORY;  -- journal in RAM only; crash = data loss
+-- PRAGMA journal_mode = OFF;     -- no journal at all; max speed, zero safety
+
+-- =============================================================================
+--  AUTO VACUUM -- shrinks the physical file
+-- =============================================================================
+
+-- PRAGMA auto_vacuum = INCREMENTAL; -- shrink gradually
+-- PRAGMA auto_vacuum = FULL;        -- shrink after every transaction (slower writes)
+-- PRAGMA auto_vacuum = NONE;        -- SQLite default
+
+-- With INCREMENTAL, reclaim manually:
+-- PRAGMA incremental_vacuum(100);
+
+-- =============================================================================
+--  SECURE DELETE
+-- =============================================================================
+-- This build deliberately leaves secure_delete OFF at compile time, because
+-- overwriting freed pages costs write amplification on flash. Turn it on per
+-- connection if you need deleted content gone from the file immediately:
+-- PRAGMA secure_delete = ON;
+-- PRAGMA secure_delete = FAST;   -- overwrite only within the page (cheaper)
+
+-- =============================================================================
+--  LOCKING
+-- =============================================================================
+
+-- PRAGMA locking_mode = EXCLUSIVE;  -- faster if nothing else opens the DB
+-- PRAGMA locking_mode = NORMAL;     -- shared access (default)
+
+-- =============================================================================
+--  WAL CHECKPOINT TUNING
+-- =============================================================================
+
+-- Write-heavy (many INSERT/UPDATE): checkpoint more often, smaller WAL
+-- PRAGMA wal_autocheckpoint = 200;
+
+-- Read-heavy (mostly SELECT): checkpoint rarely, fewer I/O interruptions
+-- PRAGMA wal_autocheckpoint = 2000;
+
+-- =============================================================================
+--  SYNCHRONOUS -- safety vs speed
+-- =============================================================================
+
+-- PRAGMA synchronous = FULL;    -- fsync every transaction; safest, slowest
+-- PRAGMA synchronous = NORMAL;  -- compiled default
+-- PRAGMA synchronous = OFF;     -- no fsync; fastest, dangerous on crash
+
+-- =============================================================================
+--  MMAP SIZE -- override the adaptive value from the wrapper
+-- =============================================================================
+
+-- PRAGMA mmap_size = 67108864;      --  64 MB  (< 3 GB RAM)
+-- PRAGMA mmap_size = 134217728;     -- 128 MB  (3-6 GB RAM)
+-- PRAGMA mmap_size = 268435456;     -- 256 MB  (6-12 GB RAM)
+-- PRAGMA mmap_size = 536870912;     -- 512 MB  (> 12 GB RAM)
+
+-- =============================================================================
+--  INSPECTION -- uncomment to run on open
+-- =============================================================================
+
+-- SELECT * FROM pragma_compile_options();  -- how this sqlite3 was built
+-- PRAGMA integrity_check;                  -- full structural check
+-- PRAGMA foreign_key_check;                -- report violated FK constraints
+-- PRAGMA freelist_count;                   -- free (deleted) pages
+-- PRAGMA page_count;                       -- total pages
+-- PRAGMA wal_checkpoint;                   -- force a WAL checkpoint
+-- SELECT name, sum(pgsize) FROM dbstat GROUP BY name ORDER BY 2 DESC LIMIT 10;

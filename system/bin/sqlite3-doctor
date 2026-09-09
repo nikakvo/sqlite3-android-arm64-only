@@ -1,0 +1,281 @@
+#!/system/bin/sh
+# sqlite3-doctor — diagnostics for SQLite databases on Android ARM64
+# Part of nikakvo/sqlite3-android-arm64-only
+# Usage: sqlite3-doctor [options] <database.db>
+
+VERSION="2.0"
+
+SQLITE3="${SQLITE3_BIN:-/system/bin/sqlite3.real}"
+[ -x "$SQLITE3" ] || SQLITE3="${0%/*}/sqlite3.real"
+[ -x "$SQLITE3" ] || SQLITE3="sqlite3"
+
+BUSY_MS="${SQLITE3_BUSY_MS:-5000}"
+
+# Row counting reads every table end to end. Skipped above this size unless
+# --full is given, so running the doctor on a multi-GB database is not a
+# multi-minute surprise.
+ROWCOUNT_LIMIT=$(( 256 * 1024 * 1024 ))
+
+QUICK=0
+FULL=0
+
+# ── Colours ───────────────────────────────────────────────────────────────────
+# tput does not exist on Android; the old check always failed and colours were
+# dead code. TERM is the reliable signal here.
+case "${TERM:-dumb}" in
+    dumb | unknown | '') COLOR=0 ;;
+    *) [ -t 1 ] && COLOR=1 || COLOR=0 ;;
+esac
+[ -z "${NO_COLOR:-}" ] || COLOR=0
+
+if [ "$COLOR" = "1" ]; then
+    R='\033[0;31m'; G='\033[0;32m'; Y='\033[0;33m'
+    B='\033[0;34m'; C='\033[0;36m'; W='\033[1;37m'; N='\033[0m'
+else
+    R=''; G=''; Y=''; B=''; C=''; W=''; N=''
+fi
+
+ok()   { printf "  ${G}[OK]${N}      %s\n" "$*"; }
+warn() { printf "  ${Y}[WARN]${N}    %s\n" "$*"; }
+fail() { printf "  ${R}[FAIL]${N}    %s\n" "$*"; }
+info() { printf "  ${C}[INFO]${N}    %s\n" "$*"; }
+sug()  { printf "  ${B}[TIP]${N}     %s\n" "$*"; }
+
+usage() {
+    cat << EOF
+Usage: sqlite3-doctor [options] <database.db>
+
+Options:
+  --quick     skip integrity_check and row counts (fast triage)
+  --full      always count rows, even on a large database
+  -h, --help  this text
+
+Runs a full diagnostic on a SQLite database file: header validation, WAL
+state, page and freelist analysis, quick_check, integrity_check, foreign key
+check and per-table row counts.
+
+Environment:
+  SQLITE3_BIN       path to the sqlite3 binary
+  SQLITE3_BUSY_MS   busy timeout in ms (default 5000)
+EOF
+    exit 0
+}
+
+# ── Arguments ─────────────────────────────────────────────────────────────────
+DB=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h | --help) usage ;;
+        --quick) QUICK=1 ;;
+        --full)  FULL=1 ;;
+        -*) printf "${R}Error:${N} unknown option: %s\n" "$1" >&2; exit 1 ;;
+        *) DB="$1" ;;
+    esac
+    shift
+done
+
+[ -n "$DB" ] || { printf "${R}Error:${N} no database specified.\nUsage: sqlite3-doctor <database.db>\n" >&2; exit 1; }
+
+sq() {
+    "$SQLITE3" -cmd ".output /dev/null" \
+               -cmd "PRAGMA busy_timeout=$BUSY_MS;" \
+               -cmd ".output stdout" \
+               "$DB" "$1" 2>/dev/null
+}
+
+qident() { printf '"%s"' "$(printf '%s' "$1" | sed 's/"/""/g')"; }
+
+file_size() {
+    _fs=$(wc -c < "$1" 2>/dev/null | tr -d ' \t')
+    case "$_fs" in
+        '' | *[!0-9]*) printf '0' ;;
+        *) printf '%s' "$_fs" ;;
+    esac
+}
+
+human() {
+    _b="$1"
+    if   [ "$_b" -lt 1024 ]; then printf '%s B' "$_b"
+    elif [ "$_b" -lt 1048576 ]; then printf '%s KB' "$(( _b / 1024 ))"
+    elif [ "$_b" -lt 1073741824 ]; then printf '%s MB' "$(( _b / 1048576 ))"
+    else printf '%s.%s GB' "$(( _b / 1073741824 ))" "$(( (_b % 1073741824) * 10 / 1073741824 ))"
+    fi
+}
+
+printf "\n${W}%s${N}\n" "────────────────────────────────────────"
+printf "${W}  sqlite3-doctor v${VERSION}${N}\n"
+printf "${W}%s${N}\n\n" "────────────────────────────────────────"
+
+# ── File ──────────────────────────────────────────────────────────────────────
+printf "${W}[ File ]${N}\n"
+
+[ -e "$DB" ] || { fail "File not found: $DB"; exit 1; }
+if [ ! -r "$DB" ]; then
+    fail "No read permission: $DB"
+    printf "\n  Try: su -c 'sqlite3-doctor %s'\n" "$DB"
+    exit 1
+fi
+
+# A SQLite file starts with the literal string "SQLite format 3" followed by a
+# NUL. One head is enough — the old version ran dd twice and threw the first
+# result away.
+if [ "$(head -c 15 "$DB" 2>/dev/null)" = "SQLite format 3" ]; then
+    ok "Valid SQLite3 file"
+else
+    fail "Not a valid SQLite3 file (bad magic header)"
+    exit 1
+fi
+
+DB_BYTES=$(file_size "$DB")
+info "File size: $(human "$DB_BYTES")  ($DB)"
+
+WAL_FILE="${DB}-wal"
+SHM_FILE="${DB}-shm"
+if [ -f "$WAL_FILE" ]; then
+    warn "WAL file present: ${WAL_FILE} ($(human "$(file_size "$WAL_FILE")"))"
+    sug "Merge it with: sqlite3-tool wal-checkpoint $DB"
+else
+    ok "No WAL file (clean state)"
+fi
+[ -f "$SHM_FILE" ] && info "SHM file present: $SHM_FILE"
+
+# ── Database info ─────────────────────────────────────────────────────────────
+printf "\n${W}[ Database Info ]${N}\n"
+
+PAGE_SIZE=$(sq "PRAGMA page_size;")
+PAGE_COUNT=$(sq "PRAGMA page_count;")
+JOURNAL_MODE=$(sq "PRAGMA journal_mode;")
+AUTO_VACUUM=$(sq "PRAGMA auto_vacuum;")
+ENCODING=$(sq "PRAGMA encoding;")
+USER_VERSION=$(sq "PRAGMA user_version;")
+APP_ID=$(sq "PRAGMA application_id;")
+
+if [ -z "$PAGE_SIZE" ]; then
+    fail "The database could not be opened — it may be locked by another process"
+    sug "Raise the wait time: SQLITE3_BUSY_MS=30000 sqlite3-doctor $DB"
+    exit 1
+fi
+
+info "Page size:      ${PAGE_SIZE} bytes"
+info "Page count:     ${PAGE_COUNT}"
+info "Journal mode:   ${JOURNAL_MODE}"
+info "Encoding:       ${ENCODING}"
+info "User version:   ${USER_VERSION}"
+info "App ID:         ${APP_ID}"
+
+case "$AUTO_VACUUM" in
+    0) info "Auto vacuum:    NONE" ;;
+    1) info "Auto vacuum:    FULL" ;;
+    2) info "Auto vacuum:    INCREMENTAL" ;;
+    *) info "Auto vacuum:    $AUTO_VACUUM" ;;
+esac
+
+# ── Freelist ──────────────────────────────────────────────────────────────────
+printf "\n${W}[ Freelist / Fragmentation ]${N}\n"
+
+FREELIST=$(sq "PRAGMA freelist_count;")
+info "Freelist pages: ${FREELIST}"
+
+PCT=0
+if [ -n "$FREELIST" ] && [ -n "$PAGE_COUNT" ] && [ "$PAGE_COUNT" -gt 0 ] 2>/dev/null; then
+    PCT=$(( FREELIST * 100 / PAGE_COUNT ))
+    if [ "$FREELIST" -eq 0 ]; then
+        ok "No fragmentation (freelist = 0)"
+    elif [ "$PCT" -lt 5 ]; then
+        ok "Low fragmentation (${PCT}% freelist)"
+    elif [ "$PCT" -lt 20 ]; then
+        warn "Moderate fragmentation (${PCT}% freelist — ${FREELIST} pages)"
+        sug "Consider: sqlite3-tool vacuum $DB"
+    else
+        fail "High fragmentation (${PCT}% freelist — ${FREELIST} pages)"
+        sug "Run: sqlite3-tool vacuum $DB"
+    fi
+fi
+
+# ── Integrity ─────────────────────────────────────────────────────────────────
+printf "\n${W}[ Integrity ]${N}\n"
+
+printf "  Running quick_check...\n"
+QUICK_RESULT=$(sq "PRAGMA quick_check;")
+if [ "$QUICK_RESULT" = "ok" ]; then
+    ok "quick_check passed"
+else
+    fail "quick_check FAILED:"
+    printf "      %s\n" "$QUICK_RESULT"
+fi
+
+INTEGRITY="skipped"
+if [ "$QUICK" = "1" ]; then
+    info "integrity_check skipped (--quick)"
+else
+    printf "  Running integrity_check (may take a moment)...\n"
+    INTEGRITY=$(sq "PRAGMA integrity_check;")
+    if [ "$INTEGRITY" = "ok" ]; then
+        ok "integrity_check passed"
+    else
+        fail "integrity_check FAILED:"
+        printf '%s\n' "$INTEGRITY" | head -10 | while IFS= read -r line; do
+            printf "      %s\n" "$line"
+        done
+    fi
+fi
+
+# ── Foreign keys ──────────────────────────────────────────────────────────────
+printf "\n${W}[ Foreign Keys ]${N}\n"
+
+FK_CHECK=$(sq "PRAGMA foreign_key_check;")
+if [ -z "$FK_CHECK" ]; then
+    ok "No foreign key violations"
+else
+    fail "Foreign key violations found:"
+    printf '%s\n' "$FK_CHECK" | head -5 | while IFS= read -r line; do
+        printf "      %s\n" "$line"
+    done
+fi
+
+# ── Tables ────────────────────────────────────────────────────────────────────
+printf "\n${W}[ Tables ]${N}\n"
+
+TABLE_COUNT=$(sq "SELECT count(*) FROM sqlite_master WHERE type='table';")
+INDEX_COUNT=$(sq "SELECT count(*) FROM sqlite_master WHERE type='index';")
+info "Tables:  ${TABLE_COUNT:-0}"
+info "Indexes: ${INDEX_COUNT:-0}"
+
+COUNT_ROWS=1
+[ "$QUICK" = "1" ] && COUNT_ROWS=0
+if [ "$COUNT_ROWS" = "1" ] && [ "$FULL" != "1" ] && [ "$DB_BYTES" -gt "$ROWCOUNT_LIMIT" ]; then
+    COUNT_ROWS=0
+    info "Row counts skipped — database is larger than $(human "$ROWCOUNT_LIMIT") (use --full)"
+fi
+
+if [ "$COUNT_ROWS" = "1" ]; then
+    TABLES=$(sq "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;")
+    if [ -n "$TABLES" ]; then
+        printf "  Tables found:\n"
+        printf '%s\n' "$TABLES" | while IFS= read -r t; do
+            [ -n "$t" ] || continue
+            ROW_COUNT=$(sq "SELECT count(*) FROM $(qident "$t");")
+            printf "    - %-32s %s rows\n" "$t" "${ROW_COUNT:-?}"
+        done
+    fi
+fi
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+printf "\n${W}%s${N}\n" "────────────────────────────────────────"
+printf "${W}  Summary${N}\n"
+printf "${W}%s${N}\n" "────────────────────────────────────────"
+
+ISSUES=0
+[ "$QUICK_RESULT" != "ok" ]                      && { fail "quick_check failed";     ISSUES=$((ISSUES+1)); }
+[ "$INTEGRITY" != "ok" ] && [ "$QUICK" != "1" ]  && { fail "integrity_check failed"; ISSUES=$((ISSUES+1)); }
+[ -n "$FK_CHECK" ]                               && { warn "Foreign key violations"; ISSUES=$((ISSUES+1)); }
+[ -f "$WAL_FILE" ]                               && { warn "Unmerged WAL file";      ISSUES=$((ISSUES+1)); }
+[ "$PCT" -ge 20 ] 2>/dev/null                    && { warn "High fragmentation";     ISSUES=$((ISSUES+1)); }
+
+if [ "$ISSUES" -eq 0 ]; then
+    printf "\n  ${G}Database looks healthy — no issues found.${N}\n\n"
+    exit 0
+else
+    printf "\n  ${Y}Found %d issue(s) — see above for details.${N}\n\n" "$ISSUES"
+    exit 1
+fi
