@@ -1,6 +1,182 @@
 # Changelog
 
-# Changelog
+## v3.53.4-r3
+
+### Changed — the build
+
+- **Two platform flags never took effect.** `HAVE_MALLOC_USABLE_SIZE=1` is
+  ignored unless `HAVE_MALLOC_H=1` is also set, so SQLite kept its own 8-byte
+  size header on every allocation; it now uses bionic's `malloc_usable_size()`.
+  `HAVE_USLEEP=1` did nothing because SQLite sleeps with `nanosleep()`; it is
+  gone.
+- **`fdatasync()` instead of `fsync()`** (`HAVE_FDATASYNC=1`), so a commit no
+  longer flushes file metadata as well. Date functions use `localtime_r()`
+  (`HAVE_LOCALTIME_R=1`).
+- **`UPDATE`/`DELETE … ORDER BY … LIMIT` works now.** Earlier builds passed
+  `SQLITE_ENABLE_UPDATE_DELETE_LIMIT` to the official amalgamation, whose
+  parser is already generated without it: the option appeared in
+  `compile_options` while `DELETE … LIMIT` was a syntax error. `build.sh`
+  regenerates `sqlite3.c` from `sqlite-src` with the grammar (about 10 s, needs
+  `cc` and `make`; `WITH_UPDATE_LIMIT=0` skips it).
+- **Double-quoted string literals are accepted again (`SQLITE_DQS=3`).** With
+  `DQS=0`, an app database whose views or triggers use `"text"` as a string
+  rejected queries on those views, `INSERT` into tables with such triggers, and
+  `ALTER TABLE`. A tool for opening other apps' databases has to read what
+  their SQLite reads.
+- `-ldl` dropped; nothing calls `dlopen()` with extension loading omitted.
+- **Verification covers more, and runs before anything is written.** A rejected
+  build used to be left in `android-module/` anyway. Expected compile options
+  are now derived from the flag list instead of a second hand-kept list, a
+  wrong value is caught as well as a missing option, and platform flags are
+  checked through the libc functions the binary imports. ELF checks run on
+  both binaries and now also require BIND_NOW, RELRO and stripping; every LOAD
+  segment must be 16 KB aligned (the old check looked only at one value), and
+  any library besides `libc.so`, `libm.so` and `libdl.so` fails the build.
+- **Functional test on the build machine.** The same sources and SQLite flags
+  are compiled for the host and exercised: FTS5, FTS4 query syntax, R-Tree,
+  Geopoly, JSON, math, percentile, soundex, dbstat, bytecode, `sqlite_offset`,
+  `secure_delete` off, double-quoted strings, `DELETE … LIMIT`, `sqldiff`. Skip with
+  `SKIP_HOST_TEST=1`.
+- `sqlite3.c` is compiled once and linked into both programs, in parallel with
+  `shell.c` and `sqldiff.c`, instead of being compiled twice.
+- `sqlite-src` must be the same release as the amalgamation, and the version
+  comes from `sqlite3.h`; a copied archive such as `… (1).zip` no longer
+  produces a garbage version. SHA3-256 of both archives is printed for checking
+  against the download page.
+- The newest NDK on disk is used, not the alphabetically first, and its
+  revision is printed. NDK `llvm-readelf`/`llvm-strings` are preferred, so a
+  build machine without binutils works; before, a missing tool ended the
+  script silently. Unexpected failures now report the line.
+- `android-module/BUILDINFO` records the SQLite source ID, NDK revision, API
+  level and defines.
+- `--install` keeps `version=` when the SQLite version is unchanged (it used
+  to turn `v3.53.4-r2` into `v3.53.4` and bump `versionCode` on every run).
+  When the version does change it also updates `update.json` and the WebUI
+  badge. A `module.prop` without a trailing newline no longer loses its last
+  line. A bare `--install` ended the script silently; it is an error now.
+- `--install DIR --zip` packs the module into `<id>-<version>.zip` with only
+  module content (no README, `build.sh`, `update.json` or `.git`), ready to
+  upload as the release asset.
+- Under WSL, building on a Windows drive (`/mnt/c/...`) gives a warning; missing
+  host tools are reported with the `apt` command that installs them.
+- Colours only on a terminal; `--help` no longer prints lines of code.
+
+### Fixed — the tools
+
+- **`sqlite3-tool backup` could delete the database it was backing up.** It
+  started with `rm -f "$DEST"`, so `sqlite3-tool backup app.db app.db` removed
+  the source, and any failed backup destroyed the previous good copy. It now
+  refuses when source and destination are the same file, writes to a temporary
+  file next to the destination, checks it with `integrity_check`, and only then
+  moves it into place.
+- **`sqlite3-tool restore` could corrupt a database that was still open.** It
+  copied the file with `cp` and then deleted `-wal` and `-shm` beside it;
+  removing `-shm` under a live connection is unsafe, and the copy could land
+  mid-write. Restore now uses `.restore`, which goes through SQLite's backup
+  API with proper locking, handles WAL itself, and keeps the file's owner and
+  SELinux label so the app can still open its database. The result is verified
+  with `integrity_check`.
+- Paths containing `'` broke `backup`: dot-command arguments do not use SQL
+  quoting. They are now quoted the way the shell expects.
+- `sqlite3-tool --help` printed literal `\033[1;37m` sequences in a colour
+  terminal, because the colour variables held the text `\033` and the help
+  text goes through `cat`. They hold real escape bytes now.
+- `sqlite3-doctor` reported an empty (0-byte) `-wal` file as an unmerged WAL
+  and exited 1. Apps that keep a WAL database open always leave one; only a
+  non-empty WAL is flagged now.
+- `sqlite3-tool` hid SQLite's error messages everywhere. A file that is not a
+  database printed empty fields; `vacuum`, `analyze`, `optimize` and
+  `wal-checkpoint` failed without saying why. The tool now checks the database
+  header first, and commands that change the database show SQLite's own error
+  ("database is locked", "disk I/O error", ...).
+- `sqlite3-tool wal-checkpoint` reported success when the checkpoint could not
+  finish because another connection was reading. It now reads the result:
+  frames checkpointed, a warning when it is incomplete, and a clear message for
+  a database that is not in WAL mode.
+- `sqlite3-tool optimize` printed a stray `1000` (the value of
+  `PRAGMA analysis_limit`).
+- `sqlite3-tool schema <db> <table>` also lists the table's indexes and
+  triggers, ends every statement with `;` so it can be pasted back, and says so
+  when the name does not exist.
+- `sqlite3-tool backup <db> <directory>` put the temporary file into the
+  directory under its temporary name; it now backs up to `<directory>/<db name>`.
+  `restore` into a directory is refused.
+- `sqlite3-tool biggest` uses dbstat's aggregate mode (one row per object
+  instead of one per page) and no longer claims dbstat is missing when asked
+  for the top 0.
+- `sqlite3-doctor` could not tell "the check found problems" from "the check
+  could not run": a database that could not be read reported
+  `No foreign key violations`. Checks now show SQLite's error text, and a
+  locked or unreadable database is reported as such right away (the probe was
+  `page_size`, which SQLite answers without reading the file).
+- `sqlite3-doctor` reports a 0-byte file as empty instead of "bad magic
+  header", and multi-line check results are indented consistently.
+- Database paths starting with `-` were taken as options by `head` and
+  `sqlite3`; `sqlite3-doctor -- <file>` works too.
+- Both tools are v2.2.
+
+### Fixed — the module
+
+- `customize.sh` ran `pkill -x sqlite3`, which never matched anything — the
+  wrapper `exec`s into `sqlite3.real` — and was not needed, since the new files
+  are only mounted after a reboot. Removed.
+- `service.sh` dropped the last line of `module.prop` at boot when the file
+  had no trailing newline — normally `updateJson=`, which silently disabled
+  update checks.
+- `files/sqliterc-full` set the busy timeout with a PRAGMA that printed `5000`
+  at startup when loaded with `-init`. It uses `.timeout 5000` now.
+
+### Fixed — the WebUI help page
+
+Every example was run against a build with the same flags as the shipped
+binary.
+
+- **The FTS5 and FTS4 test commands failed through `su -c`** with
+  `/system/bin/sh: syntax error: unexpected '('`. `su -c` joins its arguments
+  and re-parses them, so the quotes around the SQL are lost. The tests now feed
+  SQL through a here-document into `:memory:`, which works directly, through
+  `su -c`, and leaves no file behind. Basic Usage explains the `su -c` pitfall.
+- `percentile_cont(0.95) WITHIN GROUP (ORDER BY value)` is not SQLite syntax;
+  it is `percentile_cont(value, 0.95)`. The p50/p95/p99 example queried a table
+  that did not exist.
+- The scan-status example used `.scanstatus` (the command is `.scanstats`) and
+  claimed `STMT_SCANSTATUS` was compiled in. It is opt-in; the page shows
+  `.eqp on` instead and explains how to get `.scanstats`.
+- `log()` is base 10 in SQLite; the natural-log example now uses `ln()`.
+  `floor()`/`ceil()` return `3.0 | 4.0`, not `3 | 4`.
+- The Geopoly example used a column `shape`; the column is `_shape`. It also
+  inserts a polygon now, so the query returns a row.
+- `sqlite_compileoption_used('DQS')` returns 1 (the option is present,
+  whatever its value), and `ENABLE_DESERIALIZE` returns 0 — both examples
+  claimed the opposite. `PRAGMA temp_store` reports 0, not 2.
+- The Session Config section still described the old nine-PRAGMA wrapper
+  (`cache_size=-20000`, `wal_autocheckpoint=500`, `recursive_triggers`, …). It
+  now lists what the wrapper really sets, what is compiled in, and the `.open`
+  caveat. The mmap table includes the 512 MB tier.
+- The compile-flag tables match the new build (see above). Rows for flags
+  that no longer exist or were removed (`SECURE_DELETE=0`, `HAVE_USLEEP`,
+  `ENABLE_JSON1`, `ENABLE_DESERIALIZE`) are gone.
+- **The help page is readable on a phone.** Flag and setting tables were two
+  columns wide; a long flag name pushed the description past the edge of the
+  screen, where it was cut off and could not be scrolled to. On narrow screens
+  the name now sits above its description, inline code no longer splits in the
+  middle, and the `sqlite3-tool` command list is a table instead of a
+  sideways-scrolling code block.
+- New example for `UPDATE` / `DELETE … LIMIT`; the overview lists what is new
+  in r2; the `sqlite3-tool` and `sqlite3-doctor` sections describe v2.2.
+- The linker table listed `-llog` and `-ldl` as required; the binary needs only
+  `libc.so` and `libm.so`. Added `--as-needed`, `-z relro`, `-z now` and
+  `common-page-size`.
+- Shell examples used `-- comments`, which the copy button pasted as command
+  arguments. Shell blocks use `#`, and COPY now strips comments entirely. It
+  also falls back to `execCommand` where the WebView has no clipboard API.
+- The sqlite3-doctor example output was a v1.0 transcript and rendered inside
+  the block header because of a missing `</div>`. An unclosed `<strong>` made
+  the backup note bold to the end. Both fixed; the output is from v2.1.
+- The safe-area padding targeted a `.header` class that did not exist, and
+  navigation from the mobile drawer scrolled past the section heading. Fixed.
+
+---
 
 ## v3.53.4-r2
 
