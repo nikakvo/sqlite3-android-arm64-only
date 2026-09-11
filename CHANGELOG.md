@@ -4,9 +4,6 @@
 
 ## v3.53.4-r2
 
-Same SQLite 3.53.4 binaries as r1, byte for byte. The fixes are in the scripts
-and the WebUI help page.
-
 ### Fixed — the tools
 
 - **`sqlite3-tool backup` could delete the database it was backing up.** It
