@@ -1,7 +1,7 @@
 id=sqlite3-arm64-only
 name=SQLite3 (Arm64 Only)
-version=v3.53.4-r1
-versionCode=5
+version=v3.53.4-r3
+versionCode=7
 author=Tears Burn
 description=Max-feature standalone SQLite build for Android Arm64, with sqldiff, sqlite3-tool and sqlite3-doctor
 updateJson=https://raw.githubusercontent.com/nikakvo/sqlite3-android-arm64-only/main/update.json

@@ -29,10 +29,6 @@ ui_print " "
 ui_print "* Target: /system/bin/"
 ui_print " "
 
-# A running sqlite3 keeps the old binary mapped; ask it to exit before the
-# mount changes underneath it.
-command -v pkill >/dev/null 2>&1 && pkill -x sqlite3 2>/dev/null
-
 # ── Package integrity ─────────────────────────────────────────────────────────
 # Without sqlite3.real the module is dead weight: the wrapper would install
 # fine and then fail on every invocation. Fail loudly here instead.

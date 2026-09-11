@@ -3,7 +3,7 @@
 # Part of nikakvo/sqlite3-android-arm64-only
 # Usage: sqlite3-tool <command> [args...]
 
-VERSION="2.0"
+VERSION="2.2"
 
 # Overridable so the script can be tested against any sqlite3 build.
 SQLITE3="${SQLITE3_BIN:-/system/bin/sqlite3.real}"
@@ -23,13 +23,17 @@ case "${TERM:-dumb}" in
 esac
 [ -z "${NO_COLOR:-}" ] || COLOR=0
 
+# Real ESC bytes, not the text "\033": usage() prints through cat, which does
+# not interpret escapes, so the old values showed up literally in --help.
 if [ "$COLOR" = "1" ]; then
-    R='\033[0;31m'; G='\033[0;32m'; C='\033[0;36m'; W='\033[1;37m'; N='\033[0m'
+    E=$(printf '\033')
+    R="${E}[0;31m"; G="${E}[0;32m"; Y="${E}[0;33m"; C="${E}[0;36m"; W="${E}[1;37m"; N="${E}[0m"
 else
-    R=''; G=''; C=''; W=''; N=''
+    R=''; G=''; Y=''; C=''; W=''; N=''
 fi
 
 err()  { printf "${R}Error:${N} %s\n" "$*" >&2; }
+warn() { printf "${Y}Warn:${N}  %s\n" "$*"; }
 ok()   { printf "${G}OK:${N}    %s\n" "$*"; }
 info() { printf "${C}Info:${N}  %s\n" "$*"; }
 
@@ -44,11 +48,28 @@ sq() {
                "$_db" "$@" 2>/dev/null
 }
 
+# sqw <db> <sql...> — for commands that change the database. SQLite's own
+# error message ("database is locked", "disk I/O error", ...) stays visible;
+# sq hides it, which left a bare "VACUUM failed" with no reason.
+sqw() {
+    _db="$1"
+    shift
+    "$SQLITE3" -cmd ".output /dev/null" \
+               -cmd "PRAGMA busy_timeout=$BUSY_MS;" \
+               -cmd ".output stdout" \
+               "$_db" "$@"
+}
+
 # Quote an SQL identifier: wrap in double quotes and double any inside.
 qident() { printf '"%s"' "$(printf '%s' "$1" | sed 's/"/""/g')"; }
 
 # Quote an SQL string literal.
 qstr() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
+
+# Quote an argument for a dot-command (.backup, .restore). The shell does not
+# understand SQL-style '' inside dot-command arguments; it uses double quotes
+# with backslash escapes instead.
+qdot() { printf '"%s"' "$(printf '%s' "$1" | sed 's/[\\"]/\\&/g')"; }
 
 human() { # bytes -> human readable, integer math only
     _b="$1"
@@ -125,11 +146,26 @@ esac
 CMD="$1"
 DB="$2"
 ARG3="$3"
+# A path starting with "-" would be read as an option by head and sqlite3.
+case "$CMD" in
+    compile-options | version) ;;
+    *) case "$DB" in -*) DB="./$DB" ;; esac ;;
+esac
+case "$CMD" in
+    backup | restore) case "$ARG3" in -*) ARG3="./$ARG3" ;; esac ;;
+esac
 
 need_db() {
     [ -n "$DB" ] || { err "No database specified. Usage: sqlite3-tool $CMD <database>"; exit 1; }
     [ -f "$DB" ] || { err "File not found: $DB"; exit 1; }
     [ -r "$DB" ] || { err "No read permission: $DB — try: su -c 'sqlite3-tool $CMD $DB'"; exit 1; }
+    # Every query below hides SQLite's stderr, so a file that is not a database
+    # used to produce empty fields instead of an error. A 0-byte file is fine:
+    # SQLite treats it as a new, empty database.
+    if [ "$(file_size "$DB")" -gt 0 ] && [ "$(head -c 15 "$DB" 2>/dev/null)" != "SQLite format 3" ]; then
+        err "Not an SQLite 3 database (or it is encrypted): $DB"
+        exit 1
+    fi
 }
 
 need_writable() {
@@ -147,7 +183,11 @@ cmd_info() {
     info "Auto vacuum:     $(sq "$DB" 'PRAGMA auto_vacuum;')"
     info "User version:    $(sq "$DB" 'PRAGMA user_version;')"
     info "Foreign keys:    $(sq "$DB" 'PRAGMA foreign_keys;')"
-    info "WAL file:        $([ -f "${DB}-wal" ] && echo YES || echo no)"
+    if [ -f "${DB}-wal" ]; then
+        info "WAL file:        $(human "$(file_size "${DB}-wal")")"
+    else
+        info "WAL file:        none"
+    fi
     printf "\n"
     info "Tables:          $(sq "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table';")"
     info "Indexes:         $(sq "$DB" "SELECT count(*) FROM sqlite_master WHERE type='index';")"
@@ -182,12 +222,16 @@ cmd_indexes() {
 
 cmd_schema() {
     need_db
+    # Statements end in ";" so the output can be pasted back as SQL. For one
+    # table its indexes and triggers are included too, like .schema does.
     if [ -n "$ARG3" ]; then
         info "Schema for '$ARG3' in: $DB"
-        sq "$DB" "SELECT sql FROM sqlite_master WHERE name=$(qstr "$ARG3");"
+        OUT=$(sq "$DB" "SELECT sql || ';' FROM sqlite_master WHERE sql IS NOT NULL AND (name=$(qstr "$ARG3") OR tbl_name=$(qstr "$ARG3")) ORDER BY type<>'table', type, name;")
+        [ -n "$OUT" ] || { err "No table, view or index named '$ARG3'"; exit 1; }
+        printf '%s\n' "$OUT"
     else
         info "Full schema for: $DB"
-        sq "$DB" "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type, name;"
+        sq "$DB" "SELECT sql || ';' FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type, name;"
     fi
 }
 
@@ -213,13 +257,15 @@ cmd_biggest() {
     need_db
     LIMIT="${ARG3:-10}"
     case "$LIMIT" in
-        '' | *[!0-9]*) LIMIT=10 ;;
+        '' | *[!0-9]* | 0) LIMIT=10 ;;
     esac
     info "Largest objects in: $DB (top $LIMIT, via dbstat)"
     printf "\n"
     printf "  %-38s %10s %10s\n" "NAME" "PAGES" "SIZE"
     printf "  %-38s %10s %10s\n" "──────────────────────────────────────" "──────────" "──────────"
-    OUT=$(sq "$DB" "SELECT name, sum(pgsize), count(*) FROM dbstat GROUP BY name ORDER BY sum(pgsize) DESC LIMIT $LIMIT;")
+    # aggregate=TRUE makes dbstat return one row per object (pgsize = total
+    # bytes, pageno = page count) instead of one row per page.
+    OUT=$(sq "$DB" "SELECT name, pgsize, pageno FROM dbstat WHERE aggregate=TRUE ORDER BY pgsize DESC LIMIT $LIMIT;")
     if [ -z "$OUT" ]; then
         err "dbstat is unavailable — this sqlite3 was built without SQLITE_ENABLE_DBSTAT_VTAB"
         exit 1
@@ -250,7 +296,7 @@ cmd_vacuum() {
     need_writable
     BEFORE=$(file_size "$DB")
     info "Running VACUUM on: $DB (was $(human "$BEFORE"))"
-    sq "$DB" "VACUUM;" || { err "VACUUM failed"; exit 1; }
+    sqw "$DB" "VACUUM;" || { err "VACUUM failed"; exit 1; }
     AFTER=$(file_size "$DB")
     ok "VACUUM complete — $(human "$BEFORE") -> $(human "$AFTER")"
 }
@@ -259,26 +305,38 @@ cmd_analyze() {
     need_db
     need_writable
     info "Running ANALYZE on: $DB"
-    sq "$DB" "ANALYZE;" && ok "ANALYZE complete"
+    sqw "$DB" "ANALYZE;" || { err "ANALYZE failed"; exit 1; }
+    ok "ANALYZE complete"
 }
 
 cmd_optimize() {
     need_db
     need_writable
     info "Running PRAGMA optimize on: $DB"
-    sq "$DB" "PRAGMA analysis_limit=1000; PRAGMA optimize;" && ok "optimize complete"
+    # analysis_limit returns its value as a row; keep it off the output.
+    sqw "$DB" "PRAGMA analysis_limit=1000; PRAGMA optimize;" > /dev/null || { err "optimize failed"; exit 1; }
+    ok "optimize complete"
 }
 
 cmd_wal_checkpoint() {
     need_db
     need_writable
     info "Running WAL checkpoint on: $DB"
-    RESULT=$(sq "$DB" 'PRAGMA wal_checkpoint(FULL);')
-    ok "wal_checkpoint result: $RESULT"
-    if [ -f "${DB}-wal" ]; then
-        info "WAL file still present (another connection may be holding it)"
+    RESULT=$(sqw "$DB" 'PRAGMA wal_checkpoint(FULL);') || { err "wal_checkpoint failed"; exit 1; }
+    # Result is busy|wal_frames|checkpointed_frames. The old version printed
+    # "OK" even when busy=1, i.e. when the checkpoint could not finish.
+    # The "|" must be quoted: an unquoted | is pattern alternation in mksh.
+    CP_BUSY="${RESULT%%"|"*}"; _rest="${RESULT#*"|"}"
+    CP_LOG="${_rest%%"|"*}";   CP_DONE="${_rest#*"|"}"
+    if [ "$CP_LOG" = "-1" ]; then
+        info "Not in WAL mode (journal_mode is $(sq "$DB" 'PRAGMA journal_mode;')) — nothing to checkpoint"
+    elif [ "$CP_BUSY" = "1" ]; then
+        warn "Checkpoint incomplete: $CP_DONE of $CP_LOG frames — another connection is using the database"
     else
-        ok "WAL file is gone"
+        ok "Checkpointed $CP_DONE of $CP_LOG frames"
+    fi
+    if [ -f "${DB}-wal" ]; then
+        info "WAL file: $(human "$(file_size "${DB}-wal")") (kept while another connection has the database open)"
     fi
 }
 
@@ -287,28 +345,45 @@ cmd_backup() {
     need_db
     [ -n "$ARG3" ] || { err "Usage: sqlite3-tool backup <source> <destination>"; exit 1; }
     DEST="$ARG3"
+    # A directory as destination means "put it in there under the same name";
+    # before, the temporary file ended up in the directory under its temp name.
+    [ -d "$DEST" ] && DEST="${DEST%/}/$(basename "$DB")"
+
+    # The old version started with rm -f "$DEST". With the source given twice
+    # (backup app.db app.db) that deleted the database it was meant to protect,
+    # and a failed backup always destroyed the previous good copy.
+    if [ -e "$DEST" ] && [ "$DB" -ef "$DEST" ]; then
+        err "Source and destination are the same file: $DEST"
+        exit 1
+    fi
+
     info "Backing up: $DB -> $DEST"
 
-    # The old version ran a checkpoint and then plain cp. That writes to the
-    # source (fails on a read-only database) and is not atomic — a writer
-    # during the copy produces a corrupt backup. .backup uses SQLite's online
-    # backup API, which is safe on a live database and needs no write access.
-    rm -f "$DEST" "${DEST}-wal" "${DEST}-shm" 2>/dev/null
+    # .backup uses SQLite's online backup API: safe on a live database and it
+    # needs no write access to the source. Write to a temporary file next to
+    # the destination and only replace the destination once the copy has
+    # passed integrity_check.
+    TMP="${DEST}.sqlite3-tool-$$.tmp"
+    trap 'rm -f "$TMP" "${TMP}-journal" "${TMP}-wal" "${TMP}-shm"' EXIT
+    trap 'exit 130' INT TERM
 
     if ! "$SQLITE3" -cmd ".output /dev/null" \
                     -cmd "PRAGMA busy_timeout=$BUSY_MS;" \
                     -cmd ".output stdout" \
-                    "$DB" ".backup $(qstr "$DEST")"; then
-        err "Backup failed"
+                    "$DB" ".backup $(qdot "$TMP")"; then
+        err "Backup failed — $DEST was not touched"
         exit 1
     fi
 
-    [ -f "$DEST" ] || { err "Backup produced no file"; exit 1; }
-    VERIFY=$(sq "$DEST" 'PRAGMA integrity_check;')
+    [ -f "$TMP" ] || { err "Backup produced no file"; exit 1; }
+    VERIFY=$(sq "$TMP" 'PRAGMA integrity_check;')
     if [ "$VERIFY" != "ok" ]; then
-        err "Backup failed its own integrity check — not trusting it"
+        err "Backup failed its own integrity check — $DEST was not touched"
         exit 1
     fi
+
+    rm -f "${DEST}-wal" "${DEST}-shm" 2>/dev/null
+    mv -f "$TMP" "$DEST" || { err "Could not move the backup into place: $DEST"; exit 1; }
     ok "Backup complete and verified -> $DEST ($(human "$(file_size "$DEST")"))"
 }
 
@@ -318,6 +393,11 @@ cmd_restore() {
     SRC="$DB"
     DEST="$ARG3"
     [ -f "$SRC" ] || { err "Backup file not found: $SRC"; exit 1; }
+    [ -d "$DEST" ] && { err "Destination is a directory; give the database file path: $DEST"; exit 1; }
+    if [ -e "$DEST" ] && [ "$SRC" -ef "$DEST" ]; then
+        err "Backup and destination are the same file: $DEST"
+        exit 1
+    fi
 
     info "Restoring: $SRC -> $DEST"
 
@@ -327,14 +407,27 @@ cmd_restore() {
         exit 1
     fi
 
-    cp "$SRC" "$DEST" || { err "Restore copy failed"; exit 1; }
+    # The old version did cp and then deleted -wal/-shm next to the
+    # destination. Deleting -shm under an app that still has the database open
+    # corrupts it. .restore writes the pages through SQLite instead: it takes
+    # the proper locks, handles WAL itself, and keeps the file's owner and
+    # SELinux label, so an app database stays openable by its app.
+    if ! "$SQLITE3" -cmd ".output /dev/null" \
+                    -cmd "PRAGMA busy_timeout=$BUSY_MS;" \
+                    -cmd ".output stdout" \
+                    "$DEST" ".restore $(qdot "$SRC")"; then
+        err "Restore failed (is the database busy? stop the app that owns it)"
+        exit 1
+    fi
 
-    # Stale sidecar files next to the destination would be replayed against
-    # the restored database, or worse, treated as live shared memory. The old
-    # version copied them across from the backup; they must be removed.
-    rm -f "${DEST}-wal" "${DEST}-shm" 2>/dev/null
+    VERIFY=$(sq "$DEST" 'PRAGMA integrity_check;')
+    if [ "$VERIFY" != "ok" ]; then
+        err "Restored database failed integrity_check:"
+        printf '%s\n' "$VERIFY"
+        exit 1
+    fi
 
-    ok "Restore complete -> $DEST"
+    ok "Restore complete and verified -> $DEST"
 }
 
 # ── Build info ────────────────────────────────────────────────────────────────

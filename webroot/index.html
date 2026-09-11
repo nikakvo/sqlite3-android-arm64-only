@@ -17,7 +17,7 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; }
     /* System bars stay visible; just do not draw underneath them. */
-    .header { padding-top: env(safe-area-inset-top, 0px); }
+    .top-block { padding-top: env(safe-area-inset-top, 0px); }
     .scroll-area { padding-bottom: env(safe-area-inset-bottom, 0px); }
     body { background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 14px; line-height: 1.7; display: flex; flex-direction: column; }
     .top-block { flex-shrink: 0; background: var(--bg); border-bottom: 1px solid var(--border); z-index: 10; }
@@ -44,7 +44,7 @@
     .mnav-btn { display: flex; align-items: center; gap: 5px; padding: 9px 13px; border: none; background: transparent; color: var(--text-dim); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.04em; white-space: nowrap; cursor: pointer; border-bottom: 2px solid transparent; -webkit-tap-highlight-color: transparent; }
     .mnav-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
     .mnav-btn svg { flex-shrink: 0; }
-    .scroll-area { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+    .scroll-area { position: relative; flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
     .layout { display: flex; min-height: 100%; }
     .sidebar { width: 220px; flex-shrink: 0; border-right: 1px solid var(--border); padding: 20px 0; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
     .sidebar::-webkit-scrollbar { width: 3px; }
@@ -86,10 +86,13 @@
     .flag-group-title { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent2); margin-bottom: 6px; padding: 4px 0; border-bottom: 1px solid var(--border); }
     .flag-table { width: 100%; border-collapse: collapse; }
     .flag-table tr { border-bottom: 1px solid var(--border); }
+    /* Short inline code never splits (no "-" / "-gc-sections"); the few long
+       snippets with spaces are marked .cw and may wrap at their spaces. */
+    code.cw { white-space: normal; overflow-wrap: break-word; }
     .flag-table tr:last-child { border-bottom: none; }
     .flag-table td { padding: 8px 8px; vertical-align: top; }
     .flag-name { font-family: var(--mono); font-size: 10.5px; color: var(--accent); white-space: nowrap; padding-right: 12px; width: 1%; }
-    .flag-desc { font-size: 11.5px; color: var(--text); }
+    .flag-desc { font-size: 11.5px; color: var(--text); overflow-wrap: break-word; }
 
     /* ── CODE BLOCKS WITH COPY ── */
     .code-block { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 12px 0; position: relative; }
@@ -138,12 +141,27 @@
     .pragma-table td { padding: 7px 8px; font-size: 11.5px; vertical-align: top; }
     .pragma-key { font-family: var(--mono); color: var(--accent); width: 1%; white-space: nowrap; padding-right: 14px; }
     .pragma-val { color: var(--accent3); width: 1%; white-space: nowrap; padding-right: 14px; }
-    .pragma-desc { color: var(--text-dim); }
+    .pragma-desc { color: var(--text-dim); overflow-wrap: break-word; }
 
-    code { background: rgba(74,255,180,0.08); border: 1px solid rgba(74,255,180,0.15); color: var(--accent); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); font-size: 11px; }
+    code { white-space: nowrap; background: rgba(74,255,180,0.08); border: 1px solid rgba(74,255,180,0.15); color: var(--accent); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); font-size: 11px; }
     a { color: var(--accent2); text-decoration: none; }
     footer { border-top: 1px solid var(--border); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-dim); }
     .footer-left { display: flex; align-items: center; gap: 7px; }
+    /* Phones: a two-column table cannot fit a 35-character flag name next to
+       its description, and the scroll area clips sideways overflow — the text
+       was simply cut off. Stack the name above the description instead. */
+    @media (max-width: 768px) {
+      .flag-table, .flag-table tbody, .flag-table tr, .flag-table td { display: block; width: auto; }
+      .flag-table tr { padding: 11px 2px; }
+      .flag-table td { padding: 0; }
+      .flag-name { white-space: normal; overflow-wrap: anywhere; font-size: 11.5px; margin-bottom: 5px; }
+      .flag-desc { font-size: 13px; line-height: 1.6; }
+      .pragma-table, .pragma-table tbody { display: block; }
+      .pragma-table tr { display: grid; grid-template-columns: auto 1fr; column-gap: 12px; padding: 9px 2px; }
+      .pragma-table td { padding: 0; font-size: 12.5px; }
+      .pragma-key, .pragma-val { width: auto; padding-right: 0; }
+      .pragma-desc { grid-column: 1 / -1; margin-top: 4px; line-height: 1.6; }
+    }
     @media (min-width: 769px) { header { padding: 14px 24px; } main { padding: 40px 48px 56px; } .logo-icon svg { width: 40px; height: 40px; } .header-title { font-size: 17px; } footer { padding: 18px 48px; } }
     @media (max-width: 768px) { .sidebar { display: none; } .mobile-nav { display: block; } .drawer-overlay { display: block; pointer-events: none; } main { padding: 24px 16px 40px; } h2 { font-size: 17px; } footer { flex-direction: column; gap: 6px; text-align: center; } }
   </style>
@@ -235,18 +253,15 @@
         <div class="hero">
           <p class="hero-desc">Installs a <strong style="color:var(--text-bright)">standalone, max-feature <code style="background:none;border:none;color:var(--accent)">sqlite3</code> binary</strong> to <code>/system/bin/sqlite3</code>. Built from source with the Android NDK. Every stable feature enabled, tuned for stability and maximum compatibility.</p>
           <div class="hero-meta">
-            <div class="hero-meta-item"><div class="dot"></div> Replaces <span>stock sqlite3 shell</span></div>
+            <div class="hero-meta-item"><div class="dot"></div> Overlays <span>/system/bin/sqlite3</span></div>
             <div class="hero-meta-item"><div class="dot blue"></div> Does <span>not</span> touch libsqlite.so</div>
             <div class="hero-meta-item"><div class="dot orange"></div> Apps <span>unaffected</span></div>
             <div class="hero-meta-item"><div class="dot red"></div> Safe to <span>uninstall</span></div>
           </div>
         </div>
         <div class="callout safe"><div class="callout-icon">🛡</div><div class="callout-text"><strong>Safe by design.</strong> Only the interactive <code>sqlite3</code> shell is replaced. <code>libsqlite.so</code> used by Android framework and all apps is untouched.</div></div>
-        <div class="callout info"><div class="callout-icon">🆕</div><div class="callout-text"><strong>New in this release.</strong>
-          <code>SQLITE_SECURE_DELETE</code> was accidentally <em>enabled</em> in every earlier build &mdash; the flag is tested with <code>#ifdef</code>, so <code>=0</code> switched it on and every <code>DELETE</code> zero-filled its freed pages. It is now gone, along with two flags that stopped existing in SQLite years ago (<code>ENABLE_JSON1</code>, <code>ENABLE_DESERIALIZE</code>).
-          The parallel sorter is enabled, <code>backup</code> uses SQLite's online backup API instead of <code>cp</code>, every helper command sets a busy timeout, and <code>build.sh</code> now reads the compile options back out of the finished binary and refuses to ship a build that does not match.
-        </div></div>
-        <div class="callout info"><div class="callout-icon">⚙</div><div class="callout-text"><strong>Wrapper architecture.</strong> The installed <code>sqlite3</code> is a lightweight shell script that detects your device RAM, sets an adaptive <code>mmap_size</code>, injects performance PRAGMAs via <code>-cmd</code>, then calls <code>sqlite3.real</code> — the actual compiled binary.</div></div>
+        <div class="callout info"><div class="callout-icon">🆕</div><div class="callout-text"><strong>New in v3.53.4-r2.</strong> <code>UPDATE</code> / <code>DELETE &hellip; LIMIT</code> really works now. Double-quoted strings are accepted again, so app databases with old-style views and triggers can be read, written and altered. Commits use <code>fdatasync()</code>. <code>sqlite3-tool</code> backups can no longer overwrite their own source, restores go through SQLite, and write commands show SQLite's real error. <code>sqlite3-doctor</code> reports a check that could not run instead of passing it.</div></div>
+        <div class="callout info"><div class="callout-icon">⚙</div><div class="callout-text"><strong>Wrapper architecture.</strong> The installed <code>sqlite3</code> is a lightweight shell script. It sets <code>busy_timeout</code> and an <code>mmap_size</code> scaled to your device RAM via <code>-cmd</code>, then hands every argument unchanged to <code>sqlite3.real</code> — the actual compiled binary. Everything else comes from compile-time defaults. <code>SQLITE3_NO_WRAPPER=1</code> skips the wrapper entirely.</div></div>
       </section>
 
       <!-- 02 REQUIREMENTS -->
@@ -271,7 +286,7 @@
             <tr><td class="flag-name">-march=armv8-a</td><td class="flag-desc">Targets the ARMv8-A baseline. Compatible with every arm64 Android device regardless of chip generation.</td></tr>
             <tr><td class="flag-name">-fPIE</td><td class="flag-desc">Position-Independent Executable. Required by Android for ASLR (address space layout randomization).</td></tr>
             <tr><td class="flag-name">-pie</td><td class="flag-desc">Linker flag that pairs with <code>-fPIE</code>. Android 21+ refuses to run non-PIE executables.</td></tr>
-            <tr><td class="flag-name">-fuse-ld=lld</td><td class="flag-desc">Uses LLVM's LLD linker. Better dead-code elimination and required for correct LTO support with NDK.</td></tr>
+            <tr><td class="flag-name">-fuse-ld=lld</td><td class="flag-desc">LLVM's LLD linker, the NDK default. Handles <code>--gc-sections</code> and the 16 KB page alignment below.</td></tr>
             <tr><td class="flag-name">-fomit-frame-pointer</td><td class="flag-desc">Frees the frame pointer register for general use. Slight speed and size gain. Safe for a CLI tool.</td></tr>
             <tr><td class="flag-name">-fvisibility=hidden</td><td class="flag-desc">Marks all symbols as internal by default. Reduces binary size and prevents symbol leakage.</td></tr>
             <tr><td class="flag-name">-ffunction-sections</td><td class="flag-desc">Puts each function in its own ELF section so the linker can discard unused ones via <code>--gc-sections</code>.</td></tr>
@@ -284,13 +299,14 @@
           <div class="flag-group-title">🔗 Linker</div>
           <table class="flag-table">
             <tr><td class="flag-name">-Wl,--gc-sections</td><td class="flag-desc">Garbage-collects ELF sections with no references. Works with <code>-ffunction-sections</code> / <code>-fdata-sections</code>.</td></tr>
+            <tr><td class="flag-name">-Wl,--as-needed</td><td class="flag-desc">Drops libraries nothing references. Earlier builds carried a <code>NEEDED</code> entry for <code>liblog.so</code> without ever calling it; the binary now needs only <code>libc.so</code> and <code>libm.so</code>.</td></tr>
             <tr><td class="flag-name">-Wl,--strip-all</td><td class="flag-desc">Strips all symbol and debug info from the final binary. Smaller size, nothing useful for reverse engineering.</td></tr>
-            <tr><td class="flag-name">-Wl,-O2</td><td class="flag-desc">Linker-level optimization pass. Merges identical sections and tightens the output layout.</td></tr>
+            <tr><td class="flag-name">-Wl,-O2</td><td class="flag-desc">Linker optimization level 2: merges duplicate strings for a slightly smaller binary.</td></tr>
             <tr><td class="flag-name">-Wl,--build-id=none</td><td class="flag-desc">Removes the GNU build-ID note section. Shaves bytes with no practical downside for a Magisk module.</td></tr>
-            <tr><td class="flag-name">-Wl,-z,max-page-size=16384</td><td class="flag-desc">Required for Android 15+ devices with 16 KB memory pages. Without it the binary may segfault on load.</td></tr>
-            <tr><td class="flag-name">-ldl</td><td class="flag-desc">Links the dynamic linker library. SQLite shell uses <code>dlopen</code> internally even with extension loading disabled.</td></tr>
-            <tr><td class="flag-name">-lm</td><td class="flag-desc">Links the math library. Required by SQLite math functions.</td></tr>
-            <tr><td class="flag-name">-llog</td><td class="flag-desc">Links Android's logging library. Needed for correct integration with the Android runtime environment.</td></tr>
+            <tr><td class="flag-name">-Wl,-z,relro -Wl,-z,now</td><td class="flag-desc">Full RELRO: relocations are resolved at load time and the GOT is made read-only afterwards. Standard hardening for Android executables.</td></tr>
+            <tr><td class="flag-name">-Wl,-z,max-page-size=16384</td><td class="flag-desc">Aligns segments for devices with 16 KB memory pages. Without it the binary fails to load on those devices.</td></tr>
+            <tr><td class="flag-name">-Wl,-z,common-page-size=16384</td><td class="flag-desc">Pairs with <code>max-page-size</code> so the segment layout is laid out for 16 KB pages as well.</td></tr>
+            <tr><td class="flag-name">-lm</td><td class="flag-desc">Links the math library. Required by SQLite math functions. No <code>-ldl</code>: with extension loading omitted nothing calls <code>dlopen()</code>.</td></tr>
           </table>
         </div>
 
@@ -298,31 +314,31 @@
           <div class="flag-group-title">🗄 Core</div>
           <table class="flag-table">
             <tr><td class="flag-name">-DSQLITE_THREADSAFE=1</td><td class="flag-desc">Full mutex serialization. Multiple threads can safely share a single database connection.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_USE_URI=1</td><td class="flag-desc">Enables URI filenames: <code>file:db?mode=ro&amp;cache=shared</code>. Required for read-only opens and shared-cache mode.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_USE_URI=1</td><td class="flag-desc">Enables URI filenames such as <code>file:db?mode=ro</code> or <code>file:db?immutable=1</code>, so open flags can be passed in the filename. (The shell also has <code>-readonly</code> for a plain read-only open.)</td></tr>
             <tr><td class="flag-name">-DSQLITE_OMIT_LOAD_EXTENSION</td><td class="flag-desc">Disables runtime loading of <code>.so</code> extension files. Reduces attack surface on Android.</td></tr>
-            <tr><td class="flag-name"><s>-DSQLITE_SECURE_DELETE=0</s> <span style="color:var(--text-dim)">removed</span></td><td class="flag-desc">SQLite tests this flag with <code>#ifdef</code>, not by value &mdash; <code>=0</code> still defined it and therefore <strong>enabled</strong> secure delete, zero-filling every freed page. Builds up to v3.53.4 shipped with it on by mistake. Omitting the flag is what actually turns the feature off. Use <code>PRAGMA secure_delete=ON</code> per connection if you want it.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_DQS=0</td><td class="flag-desc">Disables legacy double-quoted string literals. Enforces correct SQL: double-quotes are identifiers, single-quotes are strings.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DQS=3</td><td class="flag-desc">Double-quoted string literals are accepted, as in a default SQLite build, so app databases whose views or triggers use <code>"text"</code> can still be queried, written and altered. In your own SQL use single quotes for strings; <code>.dbconfig dqs_dml off</code> gives the strict behaviour for a session.</td></tr>
             <tr><td class="flag-name">-DSQLITE_LIKE_DOESNT_MATCH_BLOBS</td><td class="flag-desc">LIKE skips BLOB columns instead of attempting string coercion. More correct behavior and a small speedup.</td></tr>
             <tr><td class="flag-name">-DSQLITE_HAVE_ISNAN</td><td class="flag-desc">Use the platform <code>isnan()</code> from <code>&lt;math.h&gt;</code> instead of SQLite's own fallback. Correct NaN handling on Android.</td></tr>
-            <tr><td class="flag-name">-DHAVE_USLEEP=1</td><td class="flag-desc">Enables microsecond-precision sleep for lock retry loops. Essential for correct busy-timeout behavior.</td></tr>
-            <tr><td class="flag-name">-DHAVE_MALLOC_USABLE_SIZE=1</td><td class="flag-desc">Lets SQLite ask bionic for the true size of an allocation instead of tracking it itself. Slightly less per-allocation overhead.</td></tr>
+            <tr><td class="flag-name">-DHAVE_MALLOC_H=1<br>-DHAVE_MALLOC_USABLE_SIZE=1</td><td class="flag-desc">SQLite asks bionic for the size of an allocation with <code>malloc_usable_size()</code> instead of storing an 8-byte size header in front of every block. Both macros are needed.</td></tr>
+            <tr><td class="flag-name">-DHAVE_FDATASYNC=1</td><td class="flag-desc">Commits call <code>fdatasync()</code> instead of <code>fsync()</code>, skipping the extra metadata flush on every sync. SQLite only does this when told the platform's <code>fdatasync()</code> can be trusted, which on Linux it can.</td></tr>
+            <tr><td class="flag-name">-DHAVE_LOCALTIME_R=1</td><td class="flag-desc">Date functions with the <code>'localtime'</code> modifier use the thread-safe <code>localtime_r()</code> instead of <code>localtime()</code> under a global mutex.</td></tr>
           </table>
         </div>
 
         <div class="flag-group">
           <div class="flag-group-title">⚡ Performance &amp; Memory</div>
           <table class="flag-table">
-            <tr><td class="flag-name">-DSQLITE_TEMP_STORE=2</td><td class="flag-desc">Temporary tables and indices default to RAM, but <code>PRAGMA temp_store</code> can still override it. Was <code>=3</code>, which forced memory unconditionally and could push the process into OOM on a large temp table.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_TEMP_STORE=2</td><td class="flag-desc">Temporary tables and indices default to RAM, but <code>PRAGMA temp_store</code> can still override it (<code>=3</code> would force RAM even for a huge temp table).</td></tr>
             <tr><td class="flag-name">-DSQLITE_DEFAULT_MEMSTATUS=0</td><td class="flag-desc">Disables per-allocation memory accounting. Removes overhead from every malloc/free call.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_MAX_WORKER_THREADS=4</td><td class="flag-desc">Upper bound for the parallel sorter. Was implicitly 0, which disabled parallel sorting entirely.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_MAX_WORKER_THREADS=4</td><td class="flag-desc">Upper bound for the parallel sorter threads.</td></tr>
             <tr><td class="flag-name">-DSQLITE_DEFAULT_WORKER_THREADS=2</td><td class="flag-desc">Two sorter threads by default &mdash; noticeably faster <code>CREATE INDEX</code> and large <code>ORDER BY</code> on a multi-core phone.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_SORTER_REFERENCES</td><td class="flag-desc">The sorter keeps rowid references instead of whole rows where it can, cutting memory use when sorting wide tables.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_DEFAULT_CACHE_SIZE=-16000</td><td class="flag-desc">Compile-time default page cache ~16MB. Overridden at runtime to -20000 by the session wrapper.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DEFAULT_CACHE_SIZE=-16000</td><td class="flag-desc">Default page cache ~16MB per connection. The wrapper does not change it.</td></tr>
             <tr><td class="flag-name">-DSQLITE_STMTJRNL_SPILL=-1</td><td class="flag-desc">Statement journals never spill to disk — always stay in RAM.</td></tr>
             <tr><td class="flag-name">-DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1</td><td class="flag-desc">WAL-mode sync defaults to NORMAL. Faster on flash without sacrificing safety.</td></tr>
             <tr><td class="flag-name">-DSQLITE_DEFAULT_SYNCHRONOUS=1</td><td class="flag-desc">Default journal-mode sync is NORMAL. Balance between data safety and write speed.</td></tr>
             <tr><td class="flag-name">-DSQLITE_DEFAULT_FOREIGN_KEYS=1</td><td class="flag-desc">FK enforcement ON by default. No need to run <code>PRAGMA foreign_keys=ON</code> every session.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_DEFAULT_MMAP_SIZE=268435456</td><td class="flag-desc">Compile-time mmap default 256MB. Overridden at runtime by adaptive RAM detection in wrapper.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DEFAULT_MMAP_SIZE=268435456</td><td class="flag-desc">Compile-time mmap default 256MB. For the database passed on the command line the wrapper replaces it with a RAM-scaled value (64–512MB).</td></tr>
             <tr><td class="flag-name">-DSQLITE_MAX_MMAP_SIZE=1099511627776</td><td class="flag-desc">Maximum allowed mmap window 1TB. Removes the ceiling for very large databases.</td></tr>
           </table>
         </div>
@@ -330,21 +346,20 @@
         <div class="flag-group">
           <div class="flag-group-title">🔍 Full-Text Search</div>
           <table class="flag-table">
-            <tr><td class="flag-name">-DSQLITE_ENABLE_FTS3_PARENTHESIS</td><td class="flag-desc">Extends FTS3/FTS4 query syntax to support parenthesized boolean expressions: <code>word1 AND (word2 OR word3)</code>.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_FTS3_PARENTHESIS</td><td class="flag-desc">Switches FTS3/FTS4 to the enhanced query syntax: <code>AND</code>, <code>OR</code>, <code>NOT</code> and parentheses, e.g. <code>word1 AND (word2 OR word3)</code>. Has no effect on FTS5, which has its own syntax.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_FTS4</td><td class="flag-desc">Full-Text Search v4. Automatically includes FTS3. Required to read Android system DBs (contacts, calendar, SMS).</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_FTS5</td><td class="flag-desc">Full-Text Search v5. Completely independent engine from FTS4. Faster ranking, BM25 scoring, prefix queries, highlight/snippet.</td></tr>
           </table>
         </div>
 
         <div class="flag-group">
-          <div class="flag-group-title">🌐 JSON · 📍 Geospatial · 📊 Stats &amp; Math</div>
+          <div class="flag-group-title">📍 Geospatial · 📊 Stats &amp; Math</div>
           <table class="flag-table">
-            <tr><td class="flag-name"><s>-DSQLITE_ENABLE_JSON1</s> <span style="color:var(--text-dim)">removed</span></td><td class="flag-desc">This macro no longer exists anywhere in the SQLite source. JSON has been built in since 3.38, so the flag did nothing and <code>sqlite_compileoption_used('ENABLE_JSON1')</code> returned 0 &mdash; which looked like a broken build. Every JSON function is still available.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_RTREE</td><td class="flag-desc">R-Tree spatial indexing. Fast bounding-box queries on coordinate data.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_GEOPOLY</td><td class="flag-desc">Polygon-based geospatial extension on top of R-Tree. Containment and overlap queries on arbitrary polygons.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_STAT4</td><td class="flag-desc">Histogram statistics on index columns during <code>ANALYZE</code>. Better query planner decisions.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_ENABLE_MATH_FUNCTIONS</td><td class="flag-desc">Adds <code>sin()</code>, <code>cos()</code>, <code>sqrt()</code>, <code>pow()</code>, <code>log()</code>, <code>floor()</code>, <code>ceil()</code>, <code>pi()</code> directly in SQL.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_ENABLE_PERCENTILE</td><td class="flag-desc">Adds <code>percentile()</code>, <code>percentile_cont()</code>, <code>percentile_disc()</code> aggregate functions.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_MATH_FUNCTIONS</td><td class="flag-desc">Adds <code>sin()</code>, <code>cos()</code>, <code>sqrt()</code>, <code>pow()</code>, <code>ln()</code>, <code>log()</code> (base 10), <code>floor()</code>, <code>ceil()</code>, <code>pi()</code> directly in SQL.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_PERCENTILE</td><td class="flag-desc">Adds <code>median()</code>, <code>percentile()</code>, <code>percentile_cont()</code>, <code>percentile_disc()</code> aggregate functions.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_OFFSET_SQL_FUNC</td><td class="flag-desc">Enables <code>sqlite_offset(column)</code> — returns byte offset of a column value in the DB file.</td></tr>
           </table>
         </div>
@@ -354,7 +369,6 @@
           <table class="flag-table">
             <tr><td class="flag-name">-DSQLITE_ENABLE_SESSION</td><td class="flag-desc">Record DB changes as a changeset blob, apply to another database. Enables sync workflows.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_PREUPDATE_HOOK</td><td class="flag-desc">Fires before every UPDATE/DELETE with old row values. Mandatory dependency for SESSION.</td></tr>
-            <tr><td class="flag-name"><s>-DSQLITE_ENABLE_DESERIALIZE</s> <span style="color:var(--text-dim)">removed</span></td><td class="flag-desc">Also no longer a real macro. Deserialize is on by default since 3.36 and is switched off with <code>SQLITE_OMIT_DESERIALIZE</code>, which this build does not use. <code>sqlite3_deserialize()</code> works exactly as before.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_SNAPSHOT</td><td class="flag-desc">Open a read transaction against a specific historical WAL snapshot &mdash; consistent multi-step reads while writers keep going.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_RBU</td><td class="flag-desc">Resumable Bulk Update: apply a large update to a live database in interruptible chunks without holding a long write lock.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_UNLOCK_NOTIFY</td><td class="flag-desc">Unlock-notification API. Threads waiting on a locked DB are notified instead of polling.</td></tr>
@@ -365,37 +379,38 @@
             <tr><td class="flag-name">-DSQLITE_ENABLE_CARRAY</td><td class="flag-desc"><code>carray</code> virtual table — bind a C array to a virtual table for SQL joins.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_COLUMN_METADATA</td><td class="flag-desc">Enables <code>sqlite3_column_table_name()</code> and related APIs for column origin info.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_NORMALIZE</td><td class="flag-desc">Enables <code>sqlite3_normalized_sql()</code> — replaces all literals with <code>?</code> for query logging.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT</td><td class="flag-desc">Adds <code>LIMIT</code> and <code>ORDER BY</code> to <code>UPDATE</code> and <code>DELETE</code> statements.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT</td><td class="flag-desc">Allows <code>ORDER BY</code> / <code>LIMIT</code> on <code>UPDATE</code> and <code>DELETE</code>, e.g. <code class="cw">DELETE FROM log ORDER BY ts LIMIT 1000</code>. SQLite only honours it when the SQL parser is generated with it, so <code>build.sh</code> rebuilds <code>sqlite3.c</code> from <code>sqlite-src</code> instead of using the ready-made amalgamation.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_EXPLAIN_COMMENTS</td><td class="flag-desc">Human-readable comments in <code>EXPLAIN</code> output. Makes VDBE opcode listing easier to read.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_UNKNOWN_SQL_FUNCTION</td><td class="flag-desc">Suppresses "no such function" in <code>EXPLAIN</code> mode. Plan queries with UDFs without executing them.</td></tr>
             <tr><td class="flag-name">-DSQLITE_SOUNDEX</td><td class="flag-desc">Adds <code>soundex()</code> for phonetic string matching.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_API_ARMOR</td><td class="flag-desc">Runtime sanity checks on public API entry points. Catches NULL pointers, closed handles.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_NULL_TRIM</td><td class="flag-desc">Trailing NULLs not stored in B-Tree records. Reduces row size for sparse tables.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_ENABLE_STMT_SCANSTATUS <span style="color:var(--text-dim)">opt-in</span></td><td class="flag-desc">Per-statement scan statistics, powering <code>.scanstats</code>. It adds counters to <em>every</em> <code>sqlite3_step()</code> call whether you use them or not, so it is off by default now. Rebuild with <code>WITH_SCANSTATUS=1 ./build.sh</code> to get it back.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_STMT_SCANSTATUS <span style="color:var(--text-dim)">opt-in, not in this build</span></td><td class="flag-desc">Per-statement scan statistics for <code>.scanstats</code>. It adds counters to every <code>sqlite3_step()</code> call whether you use them or not. Build with <code>WITH_SCANSTATUS=1 ./build.sh</code> to get it.</td></tr>
           </table>
         </div>
 
-        <div class="callout info"><div class="callout-icon">💡</div><div class="callout-text"><strong>FTS3 / FTS4 / FTS5 are all included.</strong> FTS5 is a completely separate engine — no shared code with FTS4. FTS4 is kept because Android system databases use FTS4 tables. <code>FTS3_PARENTHESIS</code> is independent from both and extends FTS4 query syntax.</div></div>
+        <div class="callout info"><div class="callout-icon">💡</div><div class="callout-text"><strong>FTS3 / FTS4 / FTS5 are all included.</strong> FTS5 is a completely separate engine — no shared code with FTS4. FTS4 is kept because Android system databases use FTS4 tables. <code>FTS3_PARENTHESIS</code> belongs to the FTS3/FTS4 engine and only changes its query syntax.</div></div>
       </section>
 
       <!-- 04 SESSION CONFIG -->
       <section id="session-config">
         <div class="section-header"><span class="section-num">04</span><h2>Session Config</h2></div>
-        <p>The module uses a <strong style="color:var(--text-bright)">wrapper + real binary</strong> architecture. PRAGMAs are injected automatically via <code>-cmd</code> on every shell start — no <code>.sqliterc</code> dependency, no <code>$HOME</code> issues.</p>
+        <p>The module uses a <strong style="color:var(--text-bright)">wrapper + real binary</strong> architecture. The wrapper passes two PRAGMAs via <code>-cmd</code> on every start — no <code>.sqliterc</code> dependency, no <code>$HOME</code> issues. Everything else is a compile-time default, so it applies to every connection, including ones made with <code>.open</code>.</p>
 
-        <h3>Auto-applied on every session start</h3>
-        <div class="callout safe"><div class="callout-icon">✓</div><div class="callout-text">These are always active. You never need to type them manually.</div></div>
+        <h3>Set by the wrapper</h3>
         <table class="pragma-table">
-          <tr><td class="pragma-key">cache_size</td><td class="pragma-val">-20000</td><td class="pragma-desc">~20MB page cache in RAM. Overrides compile-time default of -16000.</td></tr>
-          <tr><td class="pragma-key">temp_store</td><td class="pragma-val">MEMORY</td><td class="pragma-desc">Temp tables stay in RAM, not on flash.</td></tr>
           <tr><td class="pragma-key">busy_timeout</td><td class="pragma-val">5000</td><td class="pragma-desc">Wait up to 5 seconds on a locked DB instead of failing immediately.</td></tr>
-          <tr><td class="pragma-key">mmap_size</td><td class="pragma-val">adaptive</td><td class="pragma-desc">64MB &lt;3GB RAM · 128MB 3–6GB · 256MB &gt;6GB. Detected at startup from <code>/proc/meminfo</code>.</td></tr>
-          <tr><td class="pragma-key">synchronous</td><td class="pragma-val">NORMAL</td><td class="pragma-desc">Balanced speed/safety. Applied on interactive sessions only.</td></tr>
-          <tr><td class="pragma-key">wal_autocheckpoint</td><td class="pragma-val">500</td><td class="pragma-desc">Checkpoint WAL after ~2MB. Applied on interactive sessions only.</td></tr>
-          <tr><td class="pragma-key">foreign_keys</td><td class="pragma-val">ON</td><td class="pragma-desc">FK enforcement. Applied on interactive sessions only.</td></tr>
-          <tr><td class="pragma-key">recursive_triggers</td><td class="pragma-val">ON</td><td class="pragma-desc">Triggers can call themselves. Applied on interactive sessions only.</td></tr>
-          <tr><td class="pragma-key">analysis_limit</td><td class="pragma-val">1000</td><td class="pragma-desc">ANALYZE samples up to 1000 rows per index. Applied on interactive sessions only.</td></tr>
+          <tr><td class="pragma-key">mmap_size</td><td class="pragma-val">adaptive</td><td class="pragma-desc">64MB &lt;3GB RAM · 128MB 3–6GB · 256MB 6–12GB · 512MB &gt;12GB. Read from <code>/proc/meminfo</code> at startup.</td></tr>
         </table>
+
+        <h3>Compiled in — always active</h3>
+        <table class="pragma-table">
+          <tr><td class="pragma-key">cache_size</td><td class="pragma-val">-16000</td><td class="pragma-desc">~16MB page cache per connection.</td></tr>
+          <tr><td class="pragma-key">temp_store</td><td class="pragma-val">memory</td><td class="pragma-desc">Temp tables stay in RAM. <code>PRAGMA temp_store</code> reports <code>0</code> (default) — the default itself is memory.</td></tr>
+          <tr><td class="pragma-key">synchronous</td><td class="pragma-val">NORMAL</td><td class="pragma-desc">For both rollback-journal and WAL mode.</td></tr>
+          <tr><td class="pragma-key">foreign_keys</td><td class="pragma-val">ON</td><td class="pragma-desc">FK constraints are enforced.</td></tr>
+        </table>
+        <p>Not changed from SQLite's defaults: <code>wal_autocheckpoint</code> (1000 pages), <code>recursive_triggers</code> (OFF), <code>journal_mode</code> (whatever the file already uses). The commented-out options in the full config file below cover those.</p>
 
         <h3>Full config file — manual use</h3>
         <p>Deployed to <code>/data/local/.sqliterc-full</code>. Use when you need the commented-out dangerous PRAGMAs for personal databases.</p>
@@ -404,13 +419,25 @@
           <pre>sqlite3 -init /data/local/.sqliterc-full /data/local/tmp/mydb.db</pre>
         </div>
 
-        <div class="callout warn"><div class="callout-icon">⚠</div><div class="callout-text"><strong>Interactive vs DB session.</strong> When you open sqlite3 with a DB path, <code>journal_mode</code>, <code>foreign_keys</code>, and <code>wal_autocheckpoint</code> are intentionally NOT injected — system databases may reject them. Only safe PRAGMAs are applied.</div></div>
+        <div class="callout warn"><div class="callout-icon">⚠</div><div class="callout-text"><strong><code>.open</code> resets the wrapper settings.</strong> <code>.open</code> inside the shell creates a new connection with <code>busy_timeout</code> back to 0 and <code>mmap_size</code> back to the compiled 256MB. Pass the database on the command line when those matter — for example on a live system database.</div></div>
       </section>
 
       <!-- 05 BASIC USAGE -->
       <section id="usage-basic">
         <div class="section-header"><span class="section-num">05</span><h2>Basic Usage</h2></div>
-        <p>All commands require root. Run from Termux or any root shell or su -c command </p>
+        <p>Root is needed for app and system databases and for <code>/data/local/tmp</code>, which the examples below use. Type <code>su</code> first and run the commands inside that root shell. <code>:memory:</code> databases and files in your own Termux home work without root.</p>
+        <div class="callout warn"><div class="callout-icon">⚠</div><div class="callout-text"><strong>Careful with <code>su -c</code>.</strong> <code>su -c</code> joins all its arguments into one string and runs it through <code>/system/bin/sh</code> again, so the quotes around your SQL are lost and <code>(</code> becomes shell syntax: <code class="cw">/system/bin/sh: syntax error: unexpected '('</code>. The same happens with an alias such as <code>alias sqlite3='su -c sqlite3'</code>. Either pass the whole command as one quoted string, or feed the SQL through standard input, which works in every case:</div></div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">SQL via stdin — works with su -c too</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3 /data/local/tmp/mydb.db &lt;&lt;'EOF'
+<span class="kw">SELECT</span> <span class="fn">sqlite_version</span>();
+EOF</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">One quoted string for su -c</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>su -c 'sqlite3 /data/local/tmp/mydb.db ".tables"'</pre>
+        </div>
+
 
         <div class="code-block">
           <div class="code-header"><span class="code-label">Open shell (in-memory)</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
@@ -447,6 +474,15 @@
           <pre><span class="kw">CREATE TABLE</span> users (id <span class="kw">INTEGER PRIMARY KEY</span>, name <span class="kw">TEXT</span>, age <span class="kw">INTEGER</span>);
 <span class="kw">INSERT INTO</span> users <span class="kw">VALUES</span> (<span class="num">1</span>, <span class="str">'Alice'</span>, <span class="num">30</span>);
 <span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> age &gt; <span class="num">20</span>;</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">UPDATE / DELETE with LIMIT</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="cm">-- keep only the newest 1000 rows of a log table</span>
+<span class="kw">DELETE FROM</span> log <span class="kw">ORDER BY</span> ts <span class="kw">DESC LIMIT</span> -<span class="num">1</span> <span class="kw">OFFSET</span> <span class="num">1000</span>;
+
+<span class="cm">-- touch just one row</span>
+<span class="kw">UPDATE</span> users <span class="kw">SET</span> age = age + <span class="num">1</span> <span class="kw">WHERE</span> name = <span class="str">'Alice'</span> <span class="kw">LIMIT</span> <span class="num">1</span>;</pre>
         </div>
 
         <div class="code-block">
@@ -511,8 +547,10 @@ sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Geopoly polygon</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
           <pre><span class="kw">CREATE VIRTUAL TABLE</span> zones <span class="kw">USING</span> geopoly(name);
+<span class="kw">INSERT INTO</span> zones(name, _shape)
+  <span class="kw">VALUES</span>(<span class="str">'Zone A'</span>, <span class="str">'[[26.5,39.0],[26.6,39.0],[26.6,39.1],[26.5,39.1],[26.5,39.0]]'</span>);
 <span class="kw">SELECT</span> name <span class="kw">FROM</span> zones
-<span class="kw">WHERE</span> <span class="fn">geopoly_contains_point</span>(shape, <span class="num">26.55</span>, <span class="num">39.05</span>);</pre>
+<span class="kw">WHERE</span> <span class="fn">geopoly_contains_point</span>(_shape, <span class="num">26.55</span>, <span class="num">39.05</span>);  <span class="cm">-- Zone A</span></pre>
         </div>
       </section>
 
@@ -523,9 +561,10 @@ sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
           <div class="code-header"><span class="code-label">Built-in math</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
           <pre><span class="kw">SELECT</span> <span class="fn">sqrt</span>(<span class="num">144</span>);               <span class="cm">-- 12.0</span>
 <span class="kw">SELECT</span> <span class="fn">pow</span>(<span class="num">2</span>, <span class="num">10</span>);              <span class="cm">-- 1024.0</span>
-<span class="kw">SELECT</span> <span class="fn">log</span>(<span class="num">2.718281828</span>);       <span class="cm">-- ~1.0</span>
+<span class="kw">SELECT</span> <span class="fn">ln</span>(<span class="num">2.718281828</span>);        <span class="cm">-- ~1.0 (natural log)</span>
+<span class="kw">SELECT</span> <span class="fn">log</span>(<span class="num">100</span>);               <span class="cm">-- 2.0  (log() is base 10)</span>
 <span class="kw">SELECT</span> <span class="fn">sin</span>(<span class="fn">pi</span>() / <span class="num">2</span>);          <span class="cm">-- 1.0</span>
-<span class="kw">SELECT</span> <span class="fn">floor</span>(<span class="num">3.9</span>), <span class="fn">ceil</span>(<span class="num">3.1</span>);  <span class="cm">-- 3 | 4</span></pre>
+<span class="kw">SELECT</span> <span class="fn">floor</span>(<span class="num">3.9</span>), <span class="fn">ceil</span>(<span class="num">3.1</span>);  <span class="cm">-- 3.0 | 4.0</span></pre>
         </div>
       </section>
 
@@ -536,7 +575,7 @@ sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
           <div class="code-header"><span class="code-label">Verify session support</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
           <pre><span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_SESSION'</span>);       <span class="cm">-- 1</span>
 <span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_PREUPDATE_HOOK'</span>); <span class="cm">-- 1</span>
-<span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_DESERIALIZE'</span>);   <span class="cm">-- 1</span></pre>
+<span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_SNAPSHOT'</span>);      <span class="cm">-- 1</span></pre>
         </div>
       </section>
 
@@ -548,22 +587,26 @@ sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
           <pre><span class="kw">CREATE TABLE</span> metrics (value <span class="kw">REAL</span>);
 <span class="kw">INSERT INTO</span> metrics <span class="kw">VALUES</span>(<span class="num">10</span>),(<span class="num">20</span>),(<span class="num">30</span>),(<span class="num">40</span>),(<span class="num">100</span>);
 
-<span class="kw">SELECT</span> <span class="fn">percentile</span>(value, <span class="num">50</span>) <span class="kw">FROM</span> metrics;   <span class="cm">-- 30.0 (median)</span>
-<span class="kw">SELECT</span> <span class="fn">percentile_cont</span>(<span class="num">0.95</span>) <span class="kw">WITHIN GROUP</span> (<span class="kw">ORDER BY</span> value) <span class="kw">FROM</span> metrics;
+<span class="kw">SELECT</span> <span class="fn">percentile</span>(value, <span class="num">50</span>) <span class="kw">FROM</span> metrics;       <span class="cm">-- 30.0  (P is 0–100)</span>
+<span class="kw">SELECT</span> <span class="fn">median</span>(value) <span class="kw">FROM</span> metrics;               <span class="cm">-- 30.0</span>
+<span class="kw">SELECT</span> <span class="fn">percentile_cont</span>(value, <span class="num">0.95</span>) <span class="kw">FROM</span> metrics; <span class="cm">-- ~88.0 (P is 0.0–1.0)</span>
+<span class="kw">SELECT</span> <span class="fn">percentile_disc</span>(value, <span class="num">0.5</span>) <span class="kw">FROM</span> metrics;  <span class="cm">-- 30.0</span>
 
 <span class="kw">SELECT</span>
-  <span class="fn">percentile</span>(response_ms, <span class="num">50</span>) <span class="kw">AS</span> p50,
-  <span class="fn">percentile</span>(response_ms, <span class="num">95</span>) <span class="kw">AS</span> p95,
-  <span class="fn">percentile</span>(response_ms, <span class="num">99</span>) <span class="kw">AS</span> p99
-<span class="kw">FROM</span> requests;</pre>
+  <span class="fn">percentile</span>(value, <span class="num">50</span>) <span class="kw">AS</span> p50,
+  <span class="fn">percentile</span>(value, <span class="num">95</span>) <span class="kw">AS</span> p95,
+  <span class="fn">percentile</span>(value, <span class="num">99</span>) <span class="kw">AS</span> p99
+<span class="kw">FROM</span> metrics;</pre>
         </div>
         <div class="code-block">
-          <div class="code-header"><span class="code-label">Scan status</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
-          <pre><span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_STMT_SCANSTATUS'</span>); <span class="cm">-- 1</span>
-<span class="dot-cmd">.scanstatus</span> on
+          <div class="code-header"><span class="code-label">Query plan (works in this build)</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="dot-cmd">.eqp</span> on
 <span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> age &gt; <span class="num">25</span>;
-<span class="cm">-- output: rows visited · rows output · estimated rows</span></pre>
+<span class="cm">-- QUERY PLAN</span>
+<span class="cm">-- `--SCAN users</span>
+<span class="dot-cmd">.eqp</span> off</pre>
         </div>
+        <div class="callout info"><div class="callout-icon">💡</div><div class="callout-text"><strong><code>.scanstats</code> needs an opt-in build.</strong> <code>SQLITE_ENABLE_STMT_SCANSTATUS</code> is not compiled in by default (see Compile Flags), so <code>.scanstats on</code> only prints <em>not available in this build</em>. Rebuild with <code>WITH_SCANSTATUS=1 ./build.sh</code> if you need per-loop row counts.</div></div>
       </section>
 
       <!-- 12 DEBUG -->
@@ -571,14 +614,15 @@ sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
         <div class="section-header"><span class="section-num">12</span><h2>Inspect &amp; Debug</h2></div>
         <div class="code-block">
           <div class="code-header"><span class="code-label">EXPLAIN</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
-          <pre><span class="kw">EXPLAIN QUERY PLAN</span> <span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> age &gt; <span class="num">25</span>;
+          <pre><span class="cm">-- uses the users table from Basic Usage</span>
+<span class="kw">EXPLAIN QUERY PLAN</span> <span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> age &gt; <span class="num">25</span>;
 <span class="kw">EXPLAIN</span> <span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> age &gt; <span class="num">25</span>;</pre>
         </div>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Compile options &amp; integrity</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
           <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="fn">pragma_compile_options</span>();
 <span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_API_ARMOR'</span>); <span class="cm">-- 1</span>
-<span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'DQS'</span>);             <span class="cm">-- 0</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="fn">pragma_compile_options</span> <span class="kw">WHERE</span> compile_options <span class="kw">LIKE</span> <span class="str">'DQS%'</span>; <span class="cm">-- DQS=3</span>
 <span class="kw">PRAGMA</span> integrity_check;
 <span class="kw">PRAGMA</span> foreign_key_check;</pre>
         </div>
@@ -604,17 +648,20 @@ sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
 
         <div class="code-block">
           <div class="code-header"><span class="code-label">Basic usage</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
-          <pre><span class="cm">-- Show all SQL changes to transform db1 into db2</span>
+          <pre><span class="cm"># SQL that transforms db1 into db2</span>
 sqldiff db1.db db2.db
 
-<span class="cm">-- Only schema differences</span>
+<span class="cm"># Only schema differences</span>
 sqldiff --schema db1.db db2.db
 
-<span class="cm">-- Only one specific table</span>
+<span class="cm"># Only one table</span>
 sqldiff --table users db1.db db2.db
 
-<span class="cm">-- Summary only (no SQL output)</span>
-sqldiff --summary db1.db db2.db</pre>
+<span class="cm"># Per-table counts, no SQL</span>
+sqldiff --summary db1.db db2.db
+
+<span class="cm"># Include FTS3/4/5 and R-Tree tables</span>
+sqldiff --vtab db1.db db2.db</pre>
         </div>
 
         <div class="code-block">
@@ -628,83 +675,109 @@ sqldiff --summary db1.db db2.db</pre>
       <!-- 14 SQLITE3-DOCTOR -->
       <section id="tool-doctor">
         <div class="section-header"><span class="section-num">14</span><h2>sqlite3-doctor — Full Diagnostics</h2></div>
-        <p>Runs a comprehensive health check on any SQLite database file. Checks integrity, WAL state, fragmentation, foreign keys and table stats.</p>
+        <p>Runs a comprehensive health check on any SQLite database file: integrity, WAL state, fragmentation, foreign keys and table stats. If a check cannot run &mdash; the database is locked or unreadable &mdash; it shows SQLite's error and counts it as a problem instead of reporting a pass. Exit code is 0 when healthy, 1 otherwise.</p>
 
         <div class="code-block">
           <div class="code-header"><span class="code-label">Usage</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
           <pre>sqlite3-doctor /data/local/tmp/mydb.db
-sqlite3-doctor /data/data/com.example/databases/app.db</pre>
+sqlite3-doctor --quick /data/data/com.example/databases/app.db   <span class="cm"># skip integrity_check and row counts</span>
+sqlite3-doctor --full  /sdcard/big.db                            <span class="cm"># count rows even above 256 MB</span></pre>
         </div>
 
         <div class="code-block">
-          <div class="code-header"><span class="code-label">Example output</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div></div>
+          <div class="code-header"><span class="code-label">Example output</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div></div></div>
           <pre>────────────────────────────────────────
-  sqlite3-doctor v1.0
+  sqlite3-doctor v2.2
 ────────────────────────────────────────
+
 [ File ]
   [OK]      Valid SQLite3 file
-  [INFO]    File size: 8.0K
+  [INFO]    File size: 8 KB  (/data/local/tmp/mydb.db)
   [OK]      No WAL file (clean state)
+
 [ Database Info ]
-  [INFO]    Page size:    4096 bytes
-  [INFO]    Journal mode: delete
-  [INFO]    Encoding:     UTF-8
+  [INFO]    Page size:      4096 bytes
+  [INFO]    Page count:     2
+  [INFO]    Journal mode:   delete
+  [INFO]    Encoding:       UTF-8
+  [INFO]    User version:   0
+  [INFO]    App ID:         0
+  [INFO]    Auto vacuum:    NONE
+
+[ Freelist / Fragmentation ]
+  [INFO]    Freelist pages: 0
+  [OK]      No fragmentation (freelist = 0)
+
 [ Integrity ]
   Running quick_check...
   [OK]      quick_check passed
   Running integrity_check (may take a moment)...
   [OK]      integrity_check passed
+
 [ Foreign Keys ]
   [OK]      No foreign key violations
+
+[ Tables ]
+  [INFO]    Tables:  1
+  [INFO]    Indexes: 0
+  Tables found:
+    - users                            1 rows
+
 ────────────────────────────────────────
-  ✓ Database looks healthy — no issues found.</pre>
+  Summary
+────────────────────────────────────────
+
+  Database looks healthy — no issues found.</pre>
         </div>
 
-        <div class="callout warn"><div class="callout-icon">⚠</div><div class="callout-text"><strong>Requires root</strong> for system databases. Run as <code>su -c sqlite3-doctor &lt;db&gt;</code> or from inside a root shell.</div></div>
+        <div class="callout warn"><div class="callout-icon">⚠</div><div class="callout-text"><strong>Requires root</strong> for app and system databases. Run it inside a root shell (<code>su</code> first), or as <code class="cw">su -c 'sqlite3-doctor /path/to.db'</code>.</div></div>
       </section>
 
       <!-- 15 SQLITE3-TOOL -->
       <section id="tool-helper">
         <div class="section-header"><span class="section-num">15</span><h2>sqlite3-tool — Helper Commands</h2></div>
-        <p>A convenience wrapper with 16 ready-to-use commands. No SQL knowledge required for common maintenance tasks. Every command sets a busy timeout first, so touching a live database waits instead of failing immediately with <code>database is locked</code>.</p>
+        <p>16 ready-to-use commands for common maintenance, no SQL needed. Run them as <code>sqlite3-tool &lt;command&gt; &hellip;</code>. Every command waits up to 5 seconds on a busy database instead of failing with <code>database is locked</code>, refuses files that are not SQLite databases, and write commands show SQLite's own error message when something goes wrong.</p>
 
-        <div class="code-block">
-          <div class="code-header"><span class="code-label">All commands</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
-          <pre>sqlite3-tool integrity    &lt;db&gt;           <span class="cm">-- PRAGMA integrity_check</span>
-sqlite3-tool vacuum       &lt;db&gt;           <span class="cm">-- defragment and shrink</span>
-sqlite3-tool analyze      &lt;db&gt;           <span class="cm">-- update query planner stats</span>
-sqlite3-tool optimize     &lt;db&gt;           <span class="cm">-- PRAGMA optimize</span>
-sqlite3-tool wal-checkpoint &lt;db&gt;         <span class="cm">-- PRAGMA wal_checkpoint(FULL)</span>
-sqlite3-tool tables       &lt;db&gt;           <span class="cm">-- list tables with row counts</span>
-sqlite3-tool indexes      &lt;db&gt;           <span class="cm">-- list all indexes</span>
-sqlite3-tool schema       &lt;db&gt; [table]   <span class="cm">-- show CREATE statements</span>
-sqlite3-tool size         &lt;db&gt;           <span class="cm">-- page stats and file size</span>
-sqlite3-tool info         &lt;db&gt;           <span class="cm">-- quick database summary</span>
-sqlite3-tool biggest      &lt;db&gt; [n]       <span class="cm">-- largest objects on disk (dbstat)</span>
-sqlite3-tool backup       &lt;db&gt; &lt;dest&gt;    <span class="cm">-- online backup, then verified</span>
-sqlite3-tool restore      &lt;backup&gt; &lt;dest&gt; <span class="cm">-- restore from backup</span>
-sqlite3-tool doctor       &lt;db&gt;           <span class="cm">-- run sqlite3-doctor</span>
-sqlite3-tool compile-options [filter]    <span class="cm">-- how this sqlite3 was built</span>
-sqlite3-tool version                     <span class="cm">-- tool and SQLite versions</span></pre>
-        </div>
+        <table class="flag-table" style="margin-bottom:14px">
+          <tr><td class="flag-name">info &lt;db&gt;</td><td class="flag-desc">Quick summary: journal mode, page size, encoding, WAL size, table count.</td></tr>
+          <tr><td class="flag-name">tables &lt;db&gt;</td><td class="flag-desc">All tables with row counts.</td></tr>
+          <tr><td class="flag-name">indexes &lt;db&gt;</td><td class="flag-desc">All indexes and the table each belongs to.</td></tr>
+          <tr><td class="flag-name">schema &lt;db&gt; [table]</td><td class="flag-desc">CREATE statements, ending in <code>;</code>. For one table, its indexes and triggers too.</td></tr>
+          <tr><td class="flag-name">size &lt;db&gt;</td><td class="flag-desc">File size, page size, page and freelist counts, WAL size.</td></tr>
+          <tr><td class="flag-name">biggest &lt;db&gt; [n]</td><td class="flag-desc">The n largest tables and indexes on disk (default 10), via <code>dbstat</code>.</td></tr>
+          <tr><td class="flag-name">integrity &lt;db&gt;</td><td class="flag-desc"><code>PRAGMA integrity_check</code>.</td></tr>
+          <tr><td class="flag-name">vacuum &lt;db&gt;</td><td class="flag-desc">Defragment and shrink the file.</td></tr>
+          <tr><td class="flag-name">analyze &lt;db&gt;</td><td class="flag-desc">Refresh the query planner statistics.</td></tr>
+          <tr><td class="flag-name">optimize &lt;db&gt;</td><td class="flag-desc"><code>PRAGMA optimize</code>.</td></tr>
+          <tr><td class="flag-name">wal-checkpoint &lt;db&gt;</td><td class="flag-desc">Merge the WAL into the database. Says how many frames were merged, and warns when another connection kept it from finishing.</td></tr>
+          <tr><td class="flag-name">backup &lt;db&gt; &lt;file or dir&gt;</td><td class="flag-desc">Online backup, checked with <code>integrity_check</code> before it replaces anything. A directory gets a file with the same name.</td></tr>
+          <tr><td class="flag-name">restore &lt;backup&gt; &lt;db&gt;</td><td class="flag-desc">Writes a backup back into a database through SQLite.</td></tr>
+          <tr><td class="flag-name">doctor &lt;db&gt;</td><td class="flag-desc">Runs <code>sqlite3-doctor</code>.</td></tr>
+          <tr><td class="flag-name">compile-options [filter]</td><td class="flag-desc">How this <code>sqlite3</code> was built, e.g. <code>compile-options FTS</code>.</td></tr>
+          <tr><td class="flag-name">version</td><td class="flag-desc">Tool, SQLite and binary versions.</td></tr>
+        </table>
 
         <div class="code-block">
           <div class="code-header"><span class="code-label">Practical examples</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
-          <pre><span class="cm">-- Check and repair fragmentation</span>
+          <pre><span class="cm"># Check integrity, then defragment and shrink</span>
 sqlite3-tool integrity /data/local/tmp/mydb.db
 sqlite3-tool vacuum    /data/local/tmp/mydb.db
 
-<span class="cm">-- Safe backup before modifying a system DB</span>
+<span class="cm"># Backup before modifying an app database</span>
 sqlite3-tool backup /data/data/com.example/databases/app.db /sdcard/app_backup.db
 
-<span class="cm">-- Quick overview of any database</span>
-sqlite3-tool info /data/local/tmp/mydb.db
+<span class="cm"># Backup into a folder, keeps the name (app.db)</span>
+sqlite3-tool backup /data/data/com.example/databases/app.db /sdcard/
 
-<span class="cm">-- List all tables with row counts</span>
+<span class="cm"># Put it back (stop the app first: am force-stop com.example)</span>
+sqlite3-tool restore /sdcard/app_backup.db /data/data/com.example/databases/app.db
+
+<span class="cm"># Quick overview / tables with row counts</span>
+sqlite3-tool info   /data/local/tmp/mydb.db
 sqlite3-tool tables /data/local/tmp/mydb.db</pre>
         </div>
 
-        <div class="callout safe"><div class="callout-icon">🛡</div><div class="callout-text"><strong>Backup uses SQLite's online backup API (<code>.backup</code>), not a file copy. It is safe on a live database, needs no write access to the source, and the result is checked with <code>integrity_check</code> before the command reports success. Earlier versions ran <code>wal_checkpoint(FULL)</code> and then <code>cp</code> &mdash; that writes to the source and is not atomic, so a concurrent writer could produce a corrupt backup. Restore now deletes any stale <code>-wal</code> and <code>-shm</code> next to the destination instead of copying them across.</div></div>
+        <div class="callout safe"><div class="callout-icon">🛡</div><div class="callout-text"><strong>Backup and restore go through SQLite, not <code>cp</code>.</strong> <code>backup</code> uses the online backup API (<code>.backup</code>): safe on a live database and it needs no write access to the source. It writes to a temporary file, checks it with <code>integrity_check</code>, and only then replaces the destination — a failed backup leaves your previous copy untouched, and giving the same file as source and destination is refused. <code>restore</code> uses <code>.restore</code>, which takes the proper locks and keeps the database file's owner and SELinux label, so the app can still open it afterwards.</div></div>
       </section>
 
       <!-- 16 VERIFY -->
@@ -713,14 +786,15 @@ sqlite3-tool tables /data/local/tmp/mydb.db</pre>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Version</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
           <pre>sqlite3 --version
-sqlite3.real --version    <span class="cm">-- verify real binary directly</span></pre>
+sqlite3.real --version    <span class="cm"># the real binary, without the wrapper</span></pre>
         </div>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Verify session PRAGMAs are active</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
-          <pre><span class="cm">-- run inside sqlite3 shell (no DB path)</span>
+          <pre><span class="cm">-- run inside the sqlite3 shell</span>
 <span class="kw">PRAGMA</span> cache_size;    <span class="cm">-- -16000  (compile-time default)</span>
 <span class="kw">PRAGMA</span> busy_timeout;  <span class="cm">-- 5000    (set by the wrapper)</span>
-<span class="kw">PRAGMA</span> temp_store;    <span class="cm">-- 2       (memory, overridable)</span>
+<span class="kw">PRAGMA</span> temp_store;    <span class="cm">-- 0       (= default, which is memory in this build)</span>
+<span class="kw">PRAGMA</span> foreign_keys;  <span class="cm">-- 1</span>
 
 <span class="cm">-- NOTE: .open makes a NEW connection and resets busy_timeout and</span>
 <span class="cm">-- mmap_size back to the compiled defaults. Pass the database on the</span>
@@ -729,34 +803,44 @@ sqlite3.real --version    <span class="cm">-- verify real binary directly</span>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Verify mmap (needs a real DB file)</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
           <pre>sqlite3 /data/local/tmp/test.db
-<span class="kw">PRAGMA</span> mmap_size;    <span class="cm">-- 268435456 (or less on low-RAM devices)</span>
+<span class="kw">PRAGMA</span> mmap_size;    <span class="cm">-- 67108864 · 134217728 · 268435456 · 536870912, by RAM</span>
 <span class="dot-cmd">.quit</span>
 rm -f /data/local/tmp/test.db</pre>
         </div>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Test FTS5</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
-          <pre>sqlite3 /data/local/tmp/t.db "CREATE VIRTUAL TABLE t USING fts5(c); INSERT INTO t VALUES('hello world'); SELECT * FROM t WHERE t MATCH 'hello';"</pre>
+          <pre>sqlite3 :memory: &lt;&lt;'EOF'
+<span class="kw">CREATE VIRTUAL TABLE</span> t <span class="kw">USING</span> fts5(c);
+<span class="kw">INSERT INTO</span> t <span class="kw">VALUES</span>(<span class="str">'hello world'</span>);
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> t <span class="kw">WHERE</span> t <span class="kw">MATCH</span> <span class="str">'hello'</span>;
+EOF
+<span class="cm"># expected: hello world</span></pre>
         </div>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Test FTS4</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
-          <pre>sqlite3 /data/local/tmp/t.db "CREATE VIRTUAL TABLE t4 USING fts4(c); INSERT INTO t4 VALUES('hello world'); SELECT * FROM t4 WHERE t4 MATCH 'hello';"</pre>
+          <pre>sqlite3 :memory: &lt;&lt;'EOF'
+<span class="kw">CREATE VIRTUAL TABLE</span> t4 <span class="kw">USING</span> fts4(c);
+<span class="kw">INSERT INTO</span> t4 <span class="kw">VALUES</span>(<span class="str">'hello world'</span>);
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> t4 <span class="kw">WHERE</span> t4 <span class="kw">MATCH</span> <span class="str">'hello AND (world OR earth)'</span>;
+EOF
+<span class="cm"># expected: hello world</span></pre>
         </div>
         <div class="code-block">
-          <div class="code-header"><span class="code-label">Test percentile &amp; scanstatus</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
-          <pre>sqlite3-tool compile-options              <span class="cm">-- everything, one per line</span>
-sqlite3-tool compile-options WORKER       <span class="cm">-- filter</span>
+          <div class="code-header"><span class="code-label">Compile options, percentile &amp; JSON</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>sqlite3-tool compile-options              <span class="cm"># everything, one per line</span>
+sqlite3-tool compile-options WORKER       <span class="cm"># filter</span>
 
-<span class="cm">-- or straight from SQL:</span>
-sqlite3 :memory: "SELECT sqlite_compileoption_used('ENABLE_PERCENTILE');"   <span class="cm">-- 1</span>
-sqlite3 :memory: "SELECT sqlite_compileoption_used('SECURE_DELETE');"       <span class="cm">-- 0  (as it should be)</span>
-
-<span class="cm">-- Do NOT test ENABLE_JSON1 or ENABLE_DESERIALIZE: those macros no longer</span>
-<span class="cm">-- exist, so they always report 0 even though the features are present.</span>
-sqlite3 :memory: "SELECT json_extract('{\"a\":1}','$.a');"                   <span class="cm">-- 1</span></pre>
+sqlite3 :memory: &lt;&lt;'EOF'
+<span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'ENABLE_PERCENTILE'</span>);  <span class="cm">-- 1</span>
+<span class="kw">SELECT</span> <span class="fn">sqlite_compileoption_used</span>(<span class="str">'SECURE_DELETE'</span>);      <span class="cm">-- 0 (as it should be)</span>
+<span class="kw">SELECT</span> <span class="fn">median</span>(column1) <span class="kw">FROM</span> (<span class="kw">VALUES</span>(<span class="num">1</span>),(<span class="num">2</span>),(<span class="num">9</span>));      <span class="cm">-- 2.0</span>
+<span class="cm">-- JSON is built into SQLite; test the function itself:</span>
+<span class="kw">SELECT</span> <span class="fn">json_extract</span>(<span class="str">'{"a":1}'</span>, <span class="str">'$.a'</span>);                 <span class="cm">-- 1</span>
+EOF</pre>
         </div>
       </section>
 
-      <!-- 14 UNINSTALL -->
+      <!-- 17 UNINSTALL -->
       <section id="uninstall">
         <div class="section-header"><span class="section-num">17</span><h2>Uninstall</h2></div>
         <div class="callout safe">
@@ -780,17 +864,52 @@ sqlite3 :memory: "SELECT json_extract('{\"a\":1}','$.a');"                   <sp
 
 <script>
   // ── Copy button ──────────────────────────────────────────────────
-  function copyCode(btn) {
-    var pre = btn.closest('.code-block').querySelector('pre');
-    var text = pre.innerText || pre.textContent;
-    navigator.clipboard.writeText(text.trim()).then(function() {
-      btn.classList.add('copied');
-      btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>DONE';
-      setTimeout(function() {
-        btn.classList.remove('copied');
-        btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY';
-      }, 1800);
+  // Comments are for reading, not for pasting: "# note" after a command is
+  // passed as arguments by zsh unless interactivecomments is set, and "-- note"
+  // after a shell command always is. Strip .cm spans before copying.
+  function codeText(pre) {
+    var clone = pre.cloneNode(true);
+    clone.querySelectorAll('.cm').forEach(function(n) { n.remove(); });
+    var out = [];
+    clone.textContent.split('\n').forEach(function(line) {
+      line = line.replace(/\s+$/, '');
+      if (line === '' && (out.length === 0 || out[out.length - 1] === '')) return;
+      out.push(line);
     });
+    return out.join('\n').trim();
+  }
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  var ICON_COPY = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY';
+  var ICON_DONE = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>DONE';
+
+  function copyCode(btn) {
+    var text = codeText(btn.closest('.code-block').querySelector('pre'));
+    function done(ok) {
+      if (!ok) { btn.textContent = 'FAILED'; setTimeout(function() { btn.innerHTML = ICON_COPY; }, 1800); return; }
+      btn.classList.add('copied');
+      btn.innerHTML = ICON_DONE;
+      setTimeout(function() { btn.classList.remove('copied'); btn.innerHTML = ICON_COPY; }, 1800);
+    }
+    // The WebView of some root managers has no navigator.clipboard, or rejects it.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function() { done(true); }, function() { done(fallbackCopy(text)); });
+    } else {
+      done(fallbackCopy(text));
+    }
   }
 
   // ── Nav data ─────────────────────────────────────────────────────
@@ -844,7 +963,7 @@ sqlite3 :memory: "SELECT json_extract('{\"a\":1}','$.a');"                   <sp
       .filter(g => !groups || groups.includes(g.group))
       .map(g => `
         <div class="drawer-group-label">${g.group}</div>
-        ${g.items.map(i => `<a class="drawer-item" href="${i.href}" onclick="closeDrawer(); scrollToId('${i.href.slice(1)}')">${i.label}</a>`).join('')}
+        ${g.items.map(i => `<a class="drawer-item" href="${i.href}" onclick="closeDrawer(); scrollToId('${i.href.slice(1)}'); return false;">${i.label}</a>`).join('')}
       `).join('');
   }
 

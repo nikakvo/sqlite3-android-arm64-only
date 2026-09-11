@@ -39,7 +39,7 @@ CUR_DESC=$(grep '^description=' "$PROP" 2>/dev/null)
 
 if [ "$NEW_DESC" != "$CUR_DESC" ] && [ -f "$PROP" ]; then
     TMP="$PROP.tmp.$$"
-    while IFS= read -r line; do
+    while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
             description=*) printf '%s\n' "$NEW_DESC" ;;
             *) printf '%s\n' "$line" ;;
