@@ -2,6 +2,90 @@
 
 # Changelog
 
+## v3.53.4-r2
+
+Same SQLite 3.53.4 binaries as r1, byte for byte. The fixes are in the scripts
+and the WebUI help page.
+
+### Fixed — the tools
+
+- **`sqlite3-tool backup` could delete the database it was backing up.** It
+  started with `rm -f "$DEST"`, so `sqlite3-tool backup app.db app.db` removed
+  the source, and any failed backup destroyed the previous good copy. It now
+  refuses when source and destination are the same file, writes to a temporary
+  file next to the destination, checks it with `integrity_check`, and only then
+  moves it into place.
+- **`sqlite3-tool restore` could corrupt a database that was still open.** It
+  copied the file with `cp` and then deleted `-wal` and `-shm` beside it;
+  removing `-shm` under a live connection is unsafe, and the copy could land
+  mid-write. Restore now uses `.restore`, which goes through SQLite's backup
+  API with proper locking, handles WAL itself, and keeps the file's owner and
+  SELinux label so the app can still open its database. The result is verified
+  with `integrity_check`.
+- Paths containing `'` broke `backup`: dot-command arguments do not use SQL
+  quoting. They are now quoted the way the shell expects.
+- `sqlite3-tool --help` printed literal `\033[1;37m` sequences in a colour
+  terminal, because the colour variables held the text `\033` and the help
+  text goes through `cat`. They hold real escape bytes now.
+- `sqlite3-doctor` reported an empty (0-byte) `-wal` file as an unmerged WAL
+  and exited 1. Apps that keep a WAL database open always leave one; only a
+  non-empty WAL is flagged now.
+- Both tools are v2.1.
+
+### Fixed — the module
+
+- `customize.sh` ran `pkill -x sqlite3`, which never matched anything — the
+  wrapper `exec`s into `sqlite3.real` — and was not needed, since the new files
+  are only mounted after a reboot. Removed.
+- `files/sqliterc-full` set the busy timeout with a PRAGMA that printed `5000`
+  at startup when loaded with `-init`. It uses `.timeout 5000` now.
+
+### Fixed — the WebUI help page
+
+Every example was run against a build with the same flags as the shipped
+binary.
+
+- **The FTS5 and FTS4 test commands failed through `su -c`** with
+  `/system/bin/sh: syntax error: unexpected '('`. `su -c` joins its arguments
+  and re-parses them, so the quotes around the SQL are lost. The tests now feed
+  SQL through a here-document into `:memory:`, which works directly, through
+  `su -c`, and leaves no file behind. Basic Usage explains the `su -c` pitfall.
+- `percentile_cont(0.95) WITHIN GROUP (ORDER BY value)` is not SQLite syntax;
+  it is `percentile_cont(value, 0.95)`. The p50/p95/p99 example queried a table
+  that did not exist.
+- The scan-status example used `.scanstatus` (the command is `.scanstats`) and
+  claimed `STMT_SCANSTATUS` was compiled in. It is opt-in; the page shows
+  `.eqp on` instead and explains how to get `.scanstats`.
+- `log()` is base 10 in SQLite; the natural-log example now uses `ln()`.
+  `floor()`/`ceil()` return `3.0 | 4.0`, not `3 | 4`.
+- The Geopoly example used a column `shape`; the column is `_shape`. It also
+  inserts a polygon now, so the query returns a row.
+- `sqlite_compileoption_used('DQS')` returns 1 (the option is present with
+  value 0), and `ENABLE_DESERIALIZE` returns 0 — both examples claimed the
+  opposite. `PRAGMA temp_store` reports 0, not 2.
+- The Session Config section still described the old nine-PRAGMA wrapper
+  (`cache_size=-20000`, `wal_autocheckpoint=500`, `recursive_triggers`, …). It
+  now lists what the wrapper really sets, what is compiled in, and the `.open`
+  caveat. The mmap table includes the 512 MB tier.
+- `SQLITE_ENABLE_UPDATE_DELETE_LIMIT` is documented as having no effect: SQLite
+  only honours it when the parser is regenerated from canonical sources, and
+  this build compiles the amalgamation, so `DELETE … LIMIT` is a syntax error.
+- The linker table listed `-llog` and `-ldl` as required; the binary needs only
+  `libc.so` and `libm.so`. Added `--as-needed`, `-z relro`, `-z now` and
+  `common-page-size`.
+- Shell examples used `-- comments`, which the copy button pasted as command
+  arguments. Shell blocks use `#`, and COPY now strips comments entirely. It
+  also falls back to `execCommand` where the WebView has no clipboard API.
+- The sqlite3-doctor example output was a v1.0 transcript and rendered inside
+  the block header because of a missing `</div>`. An unclosed `<strong>` made
+  the backup note bold to the end. Both fixed; the output is from v2.1.
+- The safe-area padding targeted a `.header` class that did not exist, and
+  navigation from the mobile drawer scrolled past the section heading. Fixed.
+
+---
+
+---
+
 ## v3.53.4-r1
 
 Same SQLite release, rebuilt. The changes are in how it was compiled and in the
