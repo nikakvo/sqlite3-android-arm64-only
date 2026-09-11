@@ -129,7 +129,7 @@ Applied to every connection automatically, no configuration needed:
 | `MAX_MMAP_SIZE` | 1 TB |
 | `MAX_WORKER_THREADS` | 4 |
 | `DEFAULT_WORKER_THREADS` | 2 |
-| `DQS` | 0 (no double-quoted string literals) |
+| `DQS` | 3 (double-quoted strings accepted, so legacy app schemas keep working) |
 | `OMIT_LOAD_EXTENSION` | yes (smaller attack surface) |
 | `SECURE_DELETE` | **off** — see below |
 
@@ -182,12 +182,26 @@ The installer refuses to continue if the package is incomplete or if the shipped
 
 ## Building
 
+Linux or WSL. Under WSL, work in the Linux home (`~/`), not under `/mnt/c`.
+
 ```sh
-# put sqlite-amalgamation-*.zip and sqlite-src-*.zip next to build.sh
+sudo apt install build-essential unzip zip
+# put sqlite-amalgamation-XYYZZPP.zip and the matching sqlite-src-XYYZZPP.zip next to build.sh
 export ANDROID_NDK_HOME=/path/to/android-ndk
-./build.sh                              # -> ./android-module/
-./build.sh --install /path/to/module    # also copies in and bumps module.prop
+./build.sh                                    # -> ./android-module/
+./build.sh --install /path/to/module          # also copies the binaries into the module
+./build.sh --install /path/to/module --zip    # ... and packs <id>-<version>.zip for the release
+./build.sh --help                             # all options
 ```
+
+Optional switches:
+
+| Variable | Effect |
+|---|---|
+| `API=21` | minimum Android API level |
+| `WITH_UPDATE_LIMIT=0` | leave out `UPDATE`/`DELETE … LIMIT`. It is on by default: `sqlite3.c` is regenerated from `sqlite-src`, which needs `cc` and `make` |
+| `WITH_SCANSTATUS=1` | enable `.scanstats` (costs a little on every query) |
+| `SKIP_HOST_TEST=1` | skip the functional test on the build machine |
 
 Key compiler flags:
 
@@ -203,19 +217,26 @@ The full flag list, with a note on what each one does, is in the module's built-
 
 ### The build verifies itself
 
-After linking, `build.sh` reads the compile-option list back out of the finished binary and asserts that every expected flag is present and that `SECURE_DELETE` is absent, then checks the ELF architecture, PIE status, 16 KB segment alignment and the `NEEDED` library list. It refuses to finish if anything is off, and writes `SHA256SUMS`.
+Nothing is written to `android-module/` until the staged binaries pass every check:
+
+- **Compile options** are read back out of `sqlite3.real` and compared with the flag list in the script — missing options, wrong values, and options that must stay out (`SECURE_DELETE`, …) all fail the build.
+- **Platform flags** (`HAVE_MALLOC_USABLE_SIZE`, `HAVE_FDATASYNC`, `HAVE_LOCALTIME_R`) leave no trace in the option list, so the script checks that the binary really imports `malloc_usable_size()`, `fdatasync()` and `localtime_r()`.
+- **ELF**: AArch64, PIE, BIND_NOW, RELRO, stripped, every LOAD segment aligned for 16 KB pages, and no shared libraries besides `libc.so`, `libm.so`, `libdl.so` — for both `sqlite3.real` and `sqldiff`.
+- **Functional test**: the same sources with the same SQLite flags are built for the host and run through FTS5, FTS4, R-Tree, Geopoly, JSON, math, percentile, dbstat, double-quoted strings, `DELETE … LIMIT` and `sqldiff`.
+
+It then writes `SHA256SUMS` and `BUILDINFO` (SQLite source ID, NDK revision, API level, defines).
 
 ```
-── Verifying the produced binary
-  [OK]    all 47 compile-option assertions passed
+── Verifying compile options
+  [OK]    50 compile-option assertions passed
 
-── Linked libraries
-  [INFO]  NEEDED: libm.so libc.so
+── Verifying the ELF files
+  [INFO]  sqlite3.real NEEDED: libm.so libc.so
+  [INFO]  sqldiff NEEDED: libm.so libc.so
+  [OK]    ELF, 16 KB alignment, dependencies and platform imports OK
 
-── ELF checks
-  [OK]    architecture: aarch64
-  [OK]    position independent executable
-  [OK]    16 KB page alignment
+── Functional test (host build, same SQLite flags)
+  [OK]    17 functional tests passed
 ```
 
 ### If you edit the flags: `#ifdef`, not value
