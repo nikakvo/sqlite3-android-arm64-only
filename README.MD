@@ -10,7 +10,7 @@ Built from the official SQLite source with the Android NDK and packaged as a Mag
 
 ## What you get
 
-- Upstream SQLite **3.53.4**, ARM64, NDK-built (API 21+), verified after linking
+- Upstream SQLite, ARM64, NDK-built (API 21+), verified after linking
 - **`sqldiff`**, **`sqlite3-tool`** and **`sqlite3-doctor`** alongside the shell
 - Nearly every stable SQLite feature compiled in (see below)
 - `busy_timeout` of 5 s and a RAM-scaled `mmap_size` on every start
@@ -70,7 +70,7 @@ Applied to every connection, including ones made with `.open`:
 | Tool | Purpose |
 |---|---|
 | `sqlite3` | wrapper: sets `busy_timeout` and a RAM-scaled `mmap_size`, then runs `sqlite3.real` |
-| `sqlite3.real` | the compiled binary |
+| `sqlite3.real` | the compiled binary — rebuilt from each upstream SQLite release |
 | `sqldiff` | official SQLite tool — diff two databases |
 | `sqlite3-tool` | 16 helper commands for inspection and maintenance |
 | `sqlite3-doctor` | full diagnostic, exits non-zero on problems |
@@ -187,7 +187,7 @@ Nothing is written to `android-module/` until the staged binaries pass every che
 
 It then writes `SHA256SUMS` and `BUILDINFO` (SQLite source ID, NDK revision, API level, defines).
 
-Worth knowing before you edit the flag list: most SQLite options are tested with `#ifdef`, not by value, so `-DSQLITE_SECURE_DELETE=0` **enables** secure delete. Builds up to v3.53.4 shipped that way by mistake. If you don't want a feature, leave the flag out entirely — the verification step exists to catch exactly this.
+Worth knowing before you edit the flag list: most SQLite options are tested with `#ifdef`, not by value, so `-DSQLITE_SECURE_DELETE=0` **enables** secure delete. If you don't want a feature, leave the flag out entirely — the verification step exists to catch exactly this.
 
 ---
 
@@ -198,7 +198,6 @@ Worth knowing before you edit the flag list: most SQLite options are tested with
 | Module ID | `sqlite3-arm64-only` |
 | Author | Tears Burn |
 | Architecture | ARM64 |
-| SQLite version | 3.53.4 |
 | Build type | Standalone max-feature shell |
 
 [Changelog](CHANGELOG.md) · [SQLite](https://www.sqlite.org/) · Android NDK
