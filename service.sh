@@ -1,7 +1,11 @@
 #!/system/bin/sh
 # service.sh — runs late in boot, so waiting here is safe.
 
+# ${0%/*} is the module directory only when the script is called with a path,
+# which is how Magisk/KSU start it. Fall back to "." so a manual "sh
+# service.sh" from inside the module still works.
 MODDIR=${0%/*}
+[ "$MODDIR" = "$0" ] && MODDIR=.
 SQLITE_REAL="$MODDIR/system/bin/sqlite3.real"
 PROP="$MODDIR/module.prop"
 SQLITERC_DIR="/data/local"
