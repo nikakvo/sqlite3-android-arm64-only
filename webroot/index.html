@@ -37,7 +37,6 @@
     @keyframes dotBlink { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
     .header-title { font-family: var(--sans); font-size: 16px; font-weight: 800; color: var(--text-bright); letter-spacing: -0.4px; white-space: nowrap; }
     .header-sub { font-size: 9px; color: var(--text-dim); letter-spacing: 0.07em; text-transform: uppercase; margin-top: 1px; white-space: nowrap; }
-    .version-badge { background: rgba(74,255,180,0.1); border: 1px solid rgba(74,255,180,0.3); color: var(--accent); padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
     .mobile-nav { display: none; border-top: 1px solid var(--border); }
     .mnav-inner { display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0 8px; gap: 4px; scrollbar-width: none; }
     .mnav-inner::-webkit-scrollbar { display: none; }
@@ -197,7 +196,6 @@
         <div class="header-sub">Android Arm64 · Max-Feature</div>
       </div>
     </div>
-    <span class="version-badge">v3.53.4</span>
   </header>
   <nav class="mobile-nav">
     <div class="mnav-inner">
@@ -242,6 +240,7 @@
       <a class="nav-item" href="#tool-helper">sqlite3-tool</a>
       <span class="nav-label">Module</span>
       <a class="nav-item" href="#verify">Verify Install</a>
+      <a class="nav-item" href="#tests">Test Suite</a>
       <a class="nav-item" href="#uninstall">Uninstall</a>
     </aside>
 
@@ -260,8 +259,7 @@
           </div>
         </div>
         <div class="callout safe"><div class="callout-icon">🛡</div><div class="callout-text"><strong>Safe by design.</strong> Only the interactive <code>sqlite3</code> shell is replaced. <code>libsqlite.so</code> used by Android framework and all apps is untouched.</div></div>
-        <div class="callout info"><div class="callout-icon">🆕</div><div class="callout-text"><strong>New in v3.53.4-r3.</strong> <code>UPDATE</code> / <code>DELETE &hellip; LIMIT</code> really works now. Double-quoted strings are accepted again, so app databases with old-style views and triggers can be read, written and altered. Commits use <code>fdatasync()</code>. <code>sqlite3-tool</code> backups can no longer overwrite their own source, restores go through SQLite, and write commands show SQLite's real error. <code>sqlite3-doctor</code> reports a check that could not run instead of passing it.</div></div>
-        <div class="callout info"><div class="callout-icon">⚙</div><div class="callout-text"><strong>Wrapper architecture.</strong> The installed <code>sqlite3</code> is a lightweight shell script. It sets <code>busy_timeout</code> and an <code>mmap_size</code> scaled to your device RAM via <code>-cmd</code>, then hands every argument unchanged to <code>sqlite3.real</code> — the actual compiled binary. Everything else comes from compile-time defaults. <code>SQLITE3_NO_WRAPPER=1</code> skips the wrapper entirely.</div></div>
+        <div class="callout info"><div class="callout-icon">⚙</div><div class="callout-text"><strong>Wrapper architecture.</strong> The installed <code>sqlite3</code> is a lightweight shell script. It sets <code>busy_timeout</code> (with <code>.timeout</code>) and an <code>mmap_size</code> scaled to your device RAM (with <code>-mmap</code>), then hands every argument unchanged to <code>sqlite3.real</code> — the actual compiled binary. Everything else comes from compile-time defaults. <code>SQLITE3_NO_WRAPPER=1</code> skips the wrapper entirely.</div></div>
       </section>
 
       <!-- 02 REQUIREMENTS -->
@@ -338,7 +336,7 @@
             <tr><td class="flag-name">-DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1</td><td class="flag-desc">WAL-mode sync defaults to NORMAL. Faster on flash without sacrificing safety.</td></tr>
             <tr><td class="flag-name">-DSQLITE_DEFAULT_SYNCHRONOUS=1</td><td class="flag-desc">Default journal-mode sync is NORMAL. Balance between data safety and write speed.</td></tr>
             <tr><td class="flag-name">-DSQLITE_DEFAULT_FOREIGN_KEYS=1</td><td class="flag-desc">FK enforcement ON by default. No need to run <code>PRAGMA foreign_keys=ON</code> every session.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_DEFAULT_MMAP_SIZE=268435456</td><td class="flag-desc">Compile-time mmap default 256MB. For the database passed on the command line the wrapper replaces it with a RAM-scaled value (64–512MB).</td></tr>
+            <tr><td class="flag-name">-DSQLITE_DEFAULT_MMAP_SIZE=268435456</td><td class="flag-desc">Compile-time mmap default 256MB. The wrapper replaces it with a RAM-scaled value (64–512MB) for every connection it opens, including <code>.open</code>.</td></tr>
             <tr><td class="flag-name">-DSQLITE_MAX_MMAP_SIZE=1099511627776</td><td class="flag-desc">Maximum allowed mmap window 1TB. Removes the ceiling for very large databases.</td></tr>
           </table>
         </div>
@@ -395,12 +393,12 @@
       <!-- 04 SESSION CONFIG -->
       <section id="session-config">
         <div class="section-header"><span class="section-num">04</span><h2>Session Config</h2></div>
-        <p>The module uses a <strong style="color:var(--text-bright)">wrapper + real binary</strong> architecture. The wrapper passes two PRAGMAs via <code>-cmd</code> on every start — no <code>.sqliterc</code> dependency, no <code>$HOME</code> issues. Everything else is a compile-time default, so it applies to every connection, including ones made with <code>.open</code>.</p>
+        <p>The module uses a <strong style="color:var(--text-bright)">wrapper + real binary</strong> architecture. The wrapper sets two things on every start — <code>busy_timeout</code> through the <code>.timeout</code> dot-command and <code>mmap_size</code> through the <code>-mmap</code> option. It deliberately runs no SQL through <code>-cmd</code>: with <code>-bail</code>, the SQLite shell exits right after the first SQL <code>-cmd</code> and never runs your statement. No <code>.sqliterc</code> dependency, no <code>$HOME</code> issues. Everything else is a compile-time default, so it applies to every connection, including ones made with <code>.open</code>.</p>
 
         <h3>Set by the wrapper</h3>
         <table class="pragma-table">
           <tr><td class="pragma-key">busy_timeout</td><td class="pragma-val">5000</td><td class="pragma-desc">Wait up to 5 seconds on a locked DB instead of failing immediately.</td></tr>
-          <tr><td class="pragma-key">mmap_size</td><td class="pragma-val">adaptive</td><td class="pragma-desc">64MB &lt;3GB RAM · 128MB 3–6GB · 256MB 6–12GB · 512MB &gt;12GB. Read from <code>/proc/meminfo</code> at startup.</td></tr>
+          <tr><td class="pragma-key">mmap_size</td><td class="pragma-val">adaptive</td><td class="pragma-desc">64MB &lt;3GB RAM · 128MB 3–6GB · 256MB 6–12GB · 512MB &gt;12GB. Read from <code>/proc/meminfo</code> at startup. Set with <code>-mmap</code>, which is also the ceiling: pass your own <code>-mmap N</code> to go higher, or <code>-mmap 0</code> to turn it off.</td></tr>
         </table>
 
         <h3>Compiled in — always active</h3>
@@ -419,7 +417,7 @@
           <pre>sqlite3 -init /data/local/.sqliterc-full /data/local/tmp/mydb.db</pre>
         </div>
 
-        <div class="callout warn"><div class="callout-icon">⚠</div><div class="callout-text"><strong><code>.open</code> resets the wrapper settings.</strong> <code>.open</code> inside the shell creates a new connection with <code>busy_timeout</code> back to 0 and <code>mmap_size</code> back to the compiled 256MB. Pass the database on the command line when those matter — for example on a live system database.</div></div>
+        <div class="callout warn"><div class="callout-icon">⚠</div><div class="callout-text"><strong><code>.open</code> resets the wrapper settings.</strong> <code>.open</code> inside the shell creates a new connection with <code>busy_timeout</code> back to 0 (<code>mmap_size</code> is kept — it is a process-wide setting). Run <code>.timeout 5000</code> after <code>.open</code>, or pass the database on the command line when those matter — for example on a live system database.</div></div>
       </section>
 
       <!-- 05 BASIC USAGE -->
@@ -796,9 +794,9 @@ sqlite3.real --version    <span class="cm"># the real binary, without the wrappe
 <span class="kw">PRAGMA</span> temp_store;    <span class="cm">-- 0       (= default, which is memory in this build)</span>
 <span class="kw">PRAGMA</span> foreign_keys;  <span class="cm">-- 1</span>
 
-<span class="cm">-- NOTE: .open makes a NEW connection and resets busy_timeout and</span>
-<span class="cm">-- mmap_size back to the compiled defaults. Pass the database on the</span>
-<span class="cm">-- command line if you want the wrapper settings to apply to it.</span></pre>
+<span class="cm">-- NOTE: .open makes a NEW connection and resets busy_timeout to 0</span>
+<span class="cm">-- (mmap_size is kept). Run .timeout 5000 after .open, or pass the</span>
+<span class="cm">-- database on the command line.</span></pre>
         </div>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Verify mmap (needs a real DB file)</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
@@ -840,9 +838,38 @@ EOF</pre>
         </div>
       </section>
 
-      <!-- 17 UNINSTALL -->
+      <!-- 17 TEST SUITE -->
+      <section id="tests">
+        <div class="section-header"><span class="section-num">17</span><h2>Test Suite</h2></div>
+        <p><code>sqlite3-module-test.sh</code> (in the <code>tests/</code> folder of the repository) checks the whole module in one run: the binary and every compile option, the SQL features, the <code>sqlite3</code> wrapper — including waiting on a locked database — <code>sqldiff</code>, <code>sqlite3-tool</code>, <code>sqlite3-doctor</code>, and the installation itself (permissions, SELinux label, <code>module.prop</code>, <code>.sqliterc-full</code>). It only reads system databases and works in its own scratch directory, which it removes at the end.</p>
+        <div class="callout info"><div class="callout-icon">ℹ</div><div class="callout-text"><strong>Termux cannot execute scripts from <code>/sdcard</code>.</strong> Copy the script to the Termux home first, then run it as root. Run it after the module is installed and the phone has been rebooted, so it tests what is actually mounted in <code>/system/bin</code>.</div></div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Run on the phone</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>cp /sdcard/Download/sqlite3-module-test.sh ~/
+su -c "sh /data/data/com.termux/files/home/sqlite3-module-test.sh"</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Reading the result</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="cm"># each test prints [PASS], [FAIL] or [SKIP]; the last lines are the summary:</span>
+<span class="cm">#   N passed, 0 failed  ->  everything works</span>
+<span class="cm"># full log:</span>
+/sdcard/Download/sqlite3-module-test.log
+<span class="cm"># exit status 0 only when nothing failed</span>
+echo $?</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Options</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre>VERBOSE=1   <span class="cm"># also print the output of passing tests</span>
+KEEP=1      <span class="cm"># keep the scratch directory in /data/local/tmp</span>
+LOG=/path   <span class="cm"># write the log somewhere else</span>
+
+su -c "VERBOSE=1 sh /data/data/com.termux/files/home/sqlite3-module-test.sh"</pre>
+        </div>
+      </section>
+
+      <!-- 18 UNINSTALL -->
       <section id="uninstall">
-        <div class="section-header"><span class="section-num">17</span><h2>Uninstall</h2></div>
+        <div class="section-header"><span class="section-num">18</span><h2>Uninstall</h2></div>
         <div class="callout safe">
           <div class="callout-icon">✓</div>
           <div class="callout-text">
@@ -854,7 +881,7 @@ EOF</pre>
       </section>
 
       <footer>
-        <div class="footer-left"><div class="dot"></div> SQLite3 v3.53.4 · Android Arm64 · Tears Burn</div>
+        <div class="footer-left"><div class="dot"></div> SQLite3 · Android Arm64 · Tears Burn</div>
         <a href="https://github.com/nikakvo/sqlite3-android-arm64-only" target="_blank">GitHub →</a>
       </footer>
 
@@ -939,6 +966,7 @@ EOF</pre>
     ]},
     { group: 'Module', items: [
       { href: '#verify', label: 'Verify Install' },
+      { href: '#tests', label: 'Test Suite' },
       { href: '#uninstall', label: 'Uninstall' },
     ]},
   ];

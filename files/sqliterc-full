@@ -12,10 +12,12 @@
 --
 -- NOTE: PRAGMAs set at startup apply to the connection that is open then.
 -- Running .open inside the shell makes a NEW connection and resets all of
--- them; only compile-time defaults survive that.
+-- them; only compile-time defaults and the wrapper's -mmap survive that.
 --
--- NOTE: the sqlite3 wrapper runs its own settings AFTER this file, so a
--- busy_timeout or mmap_size set here is replaced by the wrapper's value.
+-- NOTE: the sqlite3 wrapper runs .timeout AFTER this file, so a busy_timeout
+-- set here is replaced by the wrapper's value. Its mmap_size (-mmap) is set
+-- BEFORE this file and is also the ceiling: a smaller PRAGMA mmap_size here
+-- works, a larger one is capped.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- =============================================================================
@@ -137,8 +139,8 @@
 -- =============================================================================
 --  MMAP SIZE
 -- =============================================================================
--- The wrapper sets mmap_size after this file runs, so a PRAGMA here has no
--- effect through it. Use the -mmap option instead; it also caps the wrapper:
+-- Through the wrapper, mmap_size is already RAM-scaled and a PRAGMA here can
+-- only lower it. To raise or disable it, use the -mmap option:
 --   sqlite3 -mmap 134217728 mydb.db     -- 128 MB
 --   sqlite3 -mmap 0 mydb.db             -- no memory mapping
 -- With sqlite3.real directly, these work:

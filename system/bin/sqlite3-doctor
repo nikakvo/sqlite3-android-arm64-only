@@ -3,7 +3,7 @@
 # Part of nikakvo/sqlite3-android-arm64-only
 # Usage: sqlite3-doctor [options] <database.db>
 
-VERSION="2.2"
+VERSION="2.3"
 
 SQLITE3="${SQLITE3_BIN:-/system/bin/sqlite3.real}"
 [ -x "$SQLITE3" ] || SQLITE3="${0%/*}/sqlite3.real"
@@ -80,9 +80,7 @@ done
 case "$DB" in -*) DB="./$DB" ;; esac
 
 sq() {
-    "$SQLITE3" -cmd ".output /dev/null" \
-               -cmd "PRAGMA busy_timeout=$BUSY_MS;" \
-               -cmd ".output stdout" \
+    "$SQLITE3" -cmd ".timeout $BUSY_MS" \
                "$DB" "$1" 2>/dev/null
 }
 
@@ -91,9 +89,7 @@ sq() {
 # run" (rc != 0, error text) are no longer both an empty string. Before, a
 # database that could not be read reported "No foreign key violations".
 sqc() {
-    "$SQLITE3" -cmd ".output /dev/null" \
-               -cmd "PRAGMA busy_timeout=$BUSY_MS;" \
-               -cmd ".output stdout" \
+    "$SQLITE3" -cmd ".timeout $BUSY_MS" \
                "$DB" "$1" 2>&1
 }
 

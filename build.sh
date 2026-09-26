@@ -8,7 +8,7 @@
 # Options:
 #   --install DIR   after a verified build, copy the binaries into the module
 #                   tree DIR; if the SQLite version changed, also update
-#                   module.prop, update.json and the WebUI version badge
+#                   module.prop and update.json
 #   --zip           with --install: pack DIR into <id>-<version>.zip, ready to
 #                   upload as a release asset
 #   --keep-build    keep .build_tmp/ (it is always kept when the build fails)
@@ -25,7 +25,8 @@
 #                          needs a host C compiler and make (about 10 s)
 #   WITH_SCANSTATUS=1      enable SQLITE_ENABLE_STMT_SCANSTATUS (.scanstats);
 #                          adds counters to every sqlite3_step()
-#   SKIP_HOST_TEST=1       skip the functional test run on the build machine
+#   SKIP_HOST_TEST=1       skip the functional tests on the build machine (the
+#                          built-in checks and tests/sqlite3-module-test.sh)
 #   HOST_CC=cc             host compiler for the amalgamation and the host test
 #
 # Build machine (Debian/Ubuntu/WSL):
@@ -73,6 +74,7 @@ done
 
 START_TIME=$(date +%s)
 WORK_DIR="$(pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$WORK_DIR/.build_tmp"
 OUT_DIR="$WORK_DIR/android-module"
 
@@ -692,6 +694,48 @@ else
     fi
 
     [ "$FAILED" -eq 0 ] && ok "$TESTS functional tests passed"
+
+    # ── Module test suite ─────────────────────────────────────────────────────
+    # tests/sqlite3-module-test.sh is the same suite that runs on the phone.
+    # Here it drives the host build through the module's own wrapper and tools
+    # (shebang switched to /bin/sh), so a new SQLite release that breaks the
+    # wrapper, sqlite3-tool or sqlite3-doctor is caught before it ships.
+    #
+    # Looked up in the --install tree (tests/ + system/bin/), then next to
+    # build.sh in either layout: the same subfolders, or all five files flat
+    # beside it (sqlite3-module-test.sh, sqlite3, sqlite3-tool, sqlite3-doctor).
+    SUITE=""; SCRIPTS=""
+    for cand in "$INSTALL_DIR/tests|$INSTALL_DIR/system/bin" \
+                "$SCRIPT_DIR/tests|$SCRIPT_DIR/system/bin" \
+                "$SCRIPT_DIR|$SCRIPT_DIR"; do
+        st="${cand%%|*}"; sb="${cand#*|}"
+        [ -n "$st" ] && [ "$st" != "/tests" ] || continue
+        if [ -f "$st/sqlite3-module-test.sh" ] && [ -f "$sb/sqlite3" ] \
+           && [ -f "$sb/sqlite3-tool" ] && [ -f "$sb/sqlite3-doctor" ]; then
+            SUITE="$st/sqlite3-module-test.sh"; SCRIPTS="$sb"; break
+        fi
+    done
+    if [ -z "$SUITE" ]; then
+        warn "module test suite skipped — put sqlite3-module-test.sh, sqlite3, sqlite3-tool and sqlite3-doctor next to build.sh"
+    else
+        step "Module test suite (host build + module scripts)"
+        TB="$H/bin"
+        mkdir -p "$TB"
+        cp "$H/sqlite3" "$TB/sqlite3.real"
+        cp "$H/sqldiff" "$TB/sqldiff"
+        for f in sqlite3 sqlite3-tool sqlite3-doctor; do
+            sed '1s|^#!.*|#!/bin/sh|' "$SCRIPTS/$f" > "$TB/$f"
+        done
+        chmod 755 "$TB"/*
+        info "Suite:   $SUITE"
+        info "Scripts: $SCRIPTS"
+        if BIN_DIR="$TB" WORK="$H/suite" LOG="$H/suite.log" sh "$SUITE" > /dev/null 2>&1; then
+            ok "$(grep -E '^  [0-9]+ passed' "$H/suite.log" | sed 's/^ *//')"
+        else
+            grep -A 8 '\[FAIL\]' "$H/suite.log" | sed 's/^/        /' | head -n 60 >&2 || true
+            fail "module test suite: $(grep -E '^  [0-9]+ passed' "$H/suite.log" | sed 's/^ *//') — full log: $H/suite.log"
+        fi
+    fi
 fi
 
 [ "$FAILED" -eq 0 ] || die "Verification failed — nothing was written to $OUT_DIR"
@@ -773,20 +817,7 @@ if [ -n "$INSTALL_DIR" ]; then
             ok "update.json: version, versionCode and zipUrl updated"
         fi
 
-        HTML="$INSTALL_DIR/webroot/index.html"
-        if [ -f "$HTML" ]; then
-            CUR_BASE_RE="${CUR_BASE//./\\.}"
-            sed -i.bak \
-                -e "s#<span class=\"version-badge\">v$CUR_BASE_RE</span>#<span class=\"version-badge\">v$SQLITE_VERSION</span>#" \
-                -e "s#SQLite3 v$CUR_BASE_RE · #SQLite3 v$SQLITE_VERSION · #" \
-                "$HTML"
-            rm -f "$HTML.bak"
-            if grep -q "version-badge\">v$SQLITE_VERSION<" "$HTML"; then
-                ok "WebUI version badge and footer updated"
-            else
-                warn "WebUI version badge not found in $HTML — update it by hand"
-            fi
-        fi
+        # The WebUI help page carries no version number, so nothing to update there.
         warn "Add a CHANGELOG entry for $NEW_VER"
     fi
 
@@ -808,8 +839,19 @@ if [ -n "$INSTALL_DIR" ]; then
         done
         ZIP_OUT="$WORK_DIR/${MOD_ID}-${MOD_VER}.zip"
         rm -f "$ZIP_OUT"
-        ( cd "$INSTALL_DIR" && zip -qr9 -X "$ZIP_OUT" "${ENTRIES[@]}" -x '*.bak' '*.tmp.*' '*/.DS_Store' )
-        unzip -l "$ZIP_OUT" | grep -q ' module.prop$' || die "module.prop is not at the root of $ZIP_OUT"
+        # A module tree on a Windows drive (/mnt/c/...) collects files that must
+        # not ship: "name:Zone.Identifier" markers WSL shows for files copied from
+        # a download, and Explorer's Thumbs.db / desktop.ini.
+        ( cd "$INSTALL_DIR" && zip -qr9 -X "$ZIP_OUT" "${ENTRIES[@]}" \
+              -x '*.bak' '*.tmp.*' '*.DS_Store' '*:Zone.Identifier' '*Thumbs.db' '*desktop.ini' )
+        # Listing captured first: `unzip -l | grep -q` let grep exit early, unzip
+        # died of SIGPIPE and pipefail turned about one build in five into a
+        # false "module.prop is not at the root" error.
+        ZIP_LIST="${NL}$(unzip -Z1 "$ZIP_OUT")${NL}"
+        case "$ZIP_LIST" in
+            *"${NL}module.prop${NL}"*) ;;
+            *) die "module.prop is not at the root of $ZIP_OUT" ;;
+        esac
         ok "$(basename "$ZIP_OUT") — $(du -h "$ZIP_OUT" | cut -f1), $("${SHA256[@]}" "$ZIP_OUT" | cut -c1-16)…"
     fi
 fi

@@ -15,7 +15,15 @@
 #   busy_timeout — has no compile-time equivalent
 #   mmap_size    — scaled to the device rather than a fixed compiled value
 #
-# Note: PRAGMAs set through -cmd apply to the connection that is open at
+# Both are set WITHOUT running SQL through -cmd. The sqlite3 shell (3.53.x and
+# trunk) ends the program right after the first SQL -cmd whenever -bail is
+# given: "sqlite3 -bail db 'DELETE ...'" then exited with status 0 and never
+# ran the statement. Dot-commands and command-line options are not affected:
+#   busy_timeout ->  .timeout (a dot-command)
+#   mmap_size    ->  -mmap    (a command-line option; it also becomes the
+#                    ceiling, so pass your own -mmap to go higher or to 0)
+#
+# Note: settings applied at startup apply to the connection that is open at
 # startup. Running .open inside the shell creates a NEW connection and resets
 # them; only the compile-time defaults survive that. Pass the database on the
 # command line if you want these settings to apply to it.
@@ -46,10 +54,8 @@ elif [ "$RAM_KB" -lt 12582912 ]; then MMAP=268435456    # 6–12 GB -> 256 MB
 else                                  MMAP=536870912    # > 12 GB -> 512 MB
 fi
 
-# .output juggling keeps the PRAGMA result rows off stdout.
+# A later -mmap from the user overrides this one.
 exec "$REAL" \
-    -cmd ".output /dev/null" \
-    -cmd "PRAGMA busy_timeout=5000;" \
-    -cmd "PRAGMA mmap_size=$MMAP;" \
-    -cmd ".output stdout" \
+    -mmap "$MMAP" \
+    -cmd ".timeout 5000" \
     "$@"

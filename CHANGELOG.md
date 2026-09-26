@@ -1,5 +1,24 @@
 # Changelog
 
+## SQLite 3.53.4 — r4
+
+### Fixed
+- **`sqlite3 -bail` silently did nothing.** The wrapper set `busy_timeout` and `mmap_size` with SQL through `-cmd`, and the SQLite shell ends the program right after the first SQL `-cmd` whenever `-bail` is given. `sqlite3 -bail app.db "DELETE …"` exited with status 0 without running the statement and without an error. The wrapper now uses `.timeout` (a dot-command) and `-mmap` (a command-line option), which the shell handles correctly. The bug is in the SQLite shell itself (3.53.x and trunk), so it is worked around here rather than waiting for an upstream fix.
+- `.open` inside the shell now keeps the RAM-scaled `mmap_size`; only `busy_timeout` is reset, as before.
+- `build.sh --zip` failed about one build in five with a false "module.prop is not at the root" error: `unzip -l | grep -q` under `pipefail` lost a race with SIGPIPE.
+
+### Changed
+- `sqlite3-tool` and `sqlite3-doctor` (v2.3) set their busy timeout with `.timeout` too — same behaviour, and immune to the `-bail` problem.
+- `mmap_size` set by the wrapper is now also the ceiling: a larger `PRAGMA mmap_size` is capped. Pass `-mmap N` to go higher, `-mmap 0` to turn it off.
+
+### New
+- `tests/sqlite3-module-test.sh` — 168 tests covering the binary, every compile option, the SQL features, the wrapper (including lock waiting), `sqldiff`, `sqlite3-tool`, `sqlite3-doctor` and, on the phone, the installed module. Run it on the device after every release.
+- WebUI help page: new **Test Suite** section — how to run the suite on the phone and read its result.
+- WebUI help page is now pure documentation: no version badge, no version in the footer and no "New in" notes. Release notes live here and on the GitHub release.
+- `build.sh` runs the same suite against the host build and the module's own scripts before anything is written, so a new SQLite version that breaks the wrapper or the tools cannot ship.
+
+---
+
 ## SQLite 3.53.4 — r3
 
 ### New

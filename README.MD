@@ -107,9 +107,9 @@ Header validation, WAL state, page and freelist analysis, `quick_check`, `integr
 
 ## Wrapper
 
-`/system/bin/sqlite3` is a small shell script: it reads `/proc/meminfo`, picks an `mmap_size` (64 / 128 / 256 / 512 MB by RAM), passes that and `busy_timeout` via `-cmd`, and hands every argument to `sqlite3.real`. Everything else is a compile-time default. `SQLITE3_NO_WRAPPER=1` bypasses it.
+`/system/bin/sqlite3` is a small shell script: it reads `/proc/meminfo`, picks an `mmap_size` (64 / 128 / 256 / 512 MB by RAM), passes it with `-mmap` and `busy_timeout` with the `.timeout` dot-command, and hands every argument to `sqlite3.real`. No SQL is run through `-cmd`: with `-bail` the SQLite shell exits right after the first SQL `-cmd` and never runs your statement. Everything else is a compile-time default. `SQLITE3_NO_WRAPPER=1` bypasses it.
 
-> PRAGMAs set at startup belong to the connection open at that moment. Running `.open` inside the shell creates a **new** connection with `busy_timeout` back to 0 and `mmap_size` back to 256 MB. Pass the database on the command line when those matter.
+> PRAGMAs set at startup belong to the connection open at that moment. Running `.open` inside the shell creates a **new** connection with `busy_timeout` back to 0 (`mmap_size` is kept — `-mmap` is process-wide). Run `.timeout 5000` after `.open`, or pass the database on the command line.
 
 ## `.sqliterc-full`
 
@@ -185,9 +185,22 @@ Nothing is written to `android-module/` until the staged binaries pass every che
 - **ELF**, both binaries: AArch64, PIE, BIND_NOW, RELRO, stripped, 16 KB aligned segments, no libraries besides `libc.so`, `libm.so`, `libdl.so`.
 - **Functional test**: the same sources and SQLite flags built for the host and run through FTS5, FTS4, R-Tree, Geopoly, JSON, math, percentile, dbstat, double-quoted strings, `DELETE … LIMIT` and `sqldiff`.
 
+- **Module test suite**: `tests/sqlite3-module-test.sh` run against that host build through the module's own wrapper, `sqlite3-tool` and `sqlite3-doctor` (168 tests). Needs `--install DIR`, or `build.sh` inside the repository.
+
 It then writes `SHA256SUMS` and `BUILDINFO` (SQLite source ID, NDK revision, API level, defines).
 
 Worth knowing before you edit the flag list: most SQLite options are tested with `#ifdef`, not by value, so `-DSQLITE_SECURE_DELETE=0` **enables** secure delete. If you don't want a feature, leave the flag out entirely — the verification step exists to catch exactly this.
+
+## Testing on the phone
+
+After installing a new release, run the same suite on the device. Termux cannot execute scripts from `/sdcard`, so copy it first:
+
+```sh
+cp /sdcard/Download/sqlite3-module-test.sh ~/
+su -c "sh /data/data/com.termux/files/home/sqlite3-module-test.sh"
+```
+
+It checks the binary, every compile option, the SQL features, the wrapper (including waiting on a locked database), `sqldiff`, both tools and the installation itself (permissions, SELinux label, `module.prop`, `.sqliterc-full`). The log goes to `/sdcard/Download/sqlite3-module-test.log`; the exit status is 0 only when everything passed.
 
 ---
 

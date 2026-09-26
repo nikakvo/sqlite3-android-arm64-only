@@ -3,7 +3,7 @@
 # Part of nikakvo/sqlite3-android-arm64-only
 # Usage: sqlite3-tool <command> [args...]
 
-VERSION="2.2"
+VERSION="2.3"
 
 # Overridable so the script can be tested against any sqlite3 build.
 SQLITE3="${SQLITE3_BIN:-/system/bin/sqlite3.real}"
@@ -42,9 +42,7 @@ info() { printf "${C}Info:${N}  %s\n" "$*"; }
 sq() {
     _db="$1"
     shift
-    "$SQLITE3" -cmd ".output /dev/null" \
-               -cmd "PRAGMA busy_timeout=$BUSY_MS;" \
-               -cmd ".output stdout" \
+    "$SQLITE3" -cmd ".timeout $BUSY_MS" \
                "$_db" "$@" 2>/dev/null
 }
 
@@ -54,9 +52,7 @@ sq() {
 sqw() {
     _db="$1"
     shift
-    "$SQLITE3" -cmd ".output /dev/null" \
-               -cmd "PRAGMA busy_timeout=$BUSY_MS;" \
-               -cmd ".output stdout" \
+    "$SQLITE3" -cmd ".timeout $BUSY_MS" \
                "$_db" "$@"
 }
 
@@ -367,9 +363,7 @@ cmd_backup() {
     trap 'rm -f "$TMP" "${TMP}-journal" "${TMP}-wal" "${TMP}-shm"' EXIT
     trap 'exit 130' INT TERM
 
-    if ! "$SQLITE3" -cmd ".output /dev/null" \
-                    -cmd "PRAGMA busy_timeout=$BUSY_MS;" \
-                    -cmd ".output stdout" \
+    if ! "$SQLITE3" -cmd ".timeout $BUSY_MS" \
                     "$DB" ".backup $(qdot "$TMP")"; then
         err "Backup failed — $DEST was not touched"
         exit 1
@@ -412,9 +406,7 @@ cmd_restore() {
     # corrupts it. .restore writes the pages through SQLite instead: it takes
     # the proper locks, handles WAL itself, and keeps the file's owner and
     # SELinux label, so an app database stays openable by its app.
-    if ! "$SQLITE3" -cmd ".output /dev/null" \
-                    -cmd "PRAGMA busy_timeout=$BUSY_MS;" \
-                    -cmd ".output stdout" \
+    if ! "$SQLITE3" -cmd ".timeout $BUSY_MS" \
                     "$DEST" ".restore $(qdot "$SRC")"; then
         err "Restore failed (is the database busy? stop the app that owns it)"
         exit 1
