@@ -377,13 +377,13 @@
             <tr><td class="flag-name">-DSQLITE_ENABLE_CARRAY</td><td class="flag-desc"><code>carray</code> virtual table — bind a C array to a virtual table for SQL joins.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_COLUMN_METADATA</td><td class="flag-desc">Enables <code>sqlite3_column_table_name()</code> and related APIs for column origin info.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_NORMALIZE</td><td class="flag-desc">Enables <code>sqlite3_normalized_sql()</code> — replaces all literals with <code>?</code> for query logging.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT</td><td class="flag-desc">Allows <code>ORDER BY</code> / <code>LIMIT</code> on <code>UPDATE</code> and <code>DELETE</code>, e.g. <code class="cw">DELETE FROM log ORDER BY ts LIMIT 1000</code>. SQLite only honours it when the SQL parser is generated with it, so <code>build.sh</code> rebuilds <code>sqlite3.c</code> from <code>sqlite-src</code> instead of using the ready-made amalgamation.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT</td><td class="flag-desc">Allows <code>ORDER BY</code> / <code>LIMIT</code> on <code>UPDATE</code> and <code>DELETE</code>, e.g. <code class="cw">DELETE FROM log ORDER BY ts LIMIT 1000</code>. SQLite only honours it when the SQL parser is generated with it, so this build regenerates <code>sqlite3.c</code> from the full SQLite source instead of using the ready-made amalgamation.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_EXPLAIN_COMMENTS</td><td class="flag-desc">Human-readable comments in <code>EXPLAIN</code> output. Makes VDBE opcode listing easier to read.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_UNKNOWN_SQL_FUNCTION</td><td class="flag-desc">Suppresses "no such function" in <code>EXPLAIN</code> mode. Plan queries with UDFs without executing them.</td></tr>
             <tr><td class="flag-name">-DSQLITE_SOUNDEX</td><td class="flag-desc">Adds <code>soundex()</code> for phonetic string matching.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_API_ARMOR</td><td class="flag-desc">Runtime sanity checks on public API entry points. Catches NULL pointers, closed handles.</td></tr>
             <tr><td class="flag-name">-DSQLITE_ENABLE_NULL_TRIM</td><td class="flag-desc">Trailing NULLs not stored in B-Tree records. Reduces row size for sparse tables.</td></tr>
-            <tr><td class="flag-name">-DSQLITE_ENABLE_STMT_SCANSTATUS <span style="color:var(--text-dim)">opt-in, not in this build</span></td><td class="flag-desc">Per-statement scan statistics for <code>.scanstats</code>. It adds counters to every <code>sqlite3_step()</code> call whether you use them or not. Build with <code>WITH_SCANSTATUS=1 ./build.sh</code> to get it.</td></tr>
+            <tr><td class="flag-name">-DSQLITE_ENABLE_STMT_SCANSTATUS <span style="color:var(--text-dim)">opt-in, not in this build</span></td><td class="flag-desc">Per-statement scan statistics for <code>.scanstats</code>. It adds counters to every <code>sqlite3_step()</code> call whether you use them or not.</td></tr>
           </table>
         </div>
 
@@ -604,7 +604,7 @@ sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
 <span class="cm">-- `--SCAN users</span>
 <span class="dot-cmd">.eqp</span> off</pre>
         </div>
-        <div class="callout info"><div class="callout-icon">💡</div><div class="callout-text"><strong><code>.scanstats</code> needs an opt-in build.</strong> <code>SQLITE_ENABLE_STMT_SCANSTATUS</code> is not compiled in by default (see Compile Flags), so <code>.scanstats on</code> only prints <em>not available in this build</em>. Rebuild with <code>WITH_SCANSTATUS=1 ./build.sh</code> if you need per-loop row counts.</div></div>
+        <div class="callout info"><div class="callout-icon">💡</div><div class="callout-text"><strong><code>.scanstats</code> needs an opt-in build.</strong> <code>SQLITE_ENABLE_STMT_SCANSTATUS</code> is not compiled in by default (see Compile Flags), so <code>.scanstats on</code> only prints <em>not available in this build</em>.</div></div>
       </section>
 
       <!-- 12 DEBUG -->
