@@ -216,3 +216,8 @@ It checks the binary, every compile option, the SQL features, the wrapper (inclu
 [Changelog](CHANGELOG.md) · [SQLite](https://www.sqlite.org/) · Android NDK
 
 *Intended for developers, power users, database inspection, forensic analysis, and advanced Android maintenance workflows.*
+
+## License
+
+The module's scripts, WebUI and build tooling are [MIT](LICENSE).
+SQLite itself, and the `sqlite3` / `sqldiff` binaries built from it, are in the [public domain](https://sqlite.org/copyright.html).
