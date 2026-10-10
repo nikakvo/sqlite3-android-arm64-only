@@ -1,5 +1,27 @@
 # Changelog
 
+## SQLite 3.54.0
+
+### Changed
+- **SQLite 3.54.0** (from 3.53.4). Upstream reports about 4% fewer CPU cycles than 3.53.4, faster `UNION ... LIMIT 1`, better handling of `expr OR TRUE` / `expr OR FALSE`, `IN (SELECT DISTINCT ...)`, and `UPDATE` no longer rewrites an expression index when the indexed value did not change.
+- `ALTER TABLE` now refuses to add, drop or rename a column named `rowid`, `_rowid_` or `oid`.
+- Column output modes (`column`, `box`, `table`, ...) print the header even when a query returns no rows.
+- On-disk temporary files are opened with `O_TMPFILE` where the file system supports it, so they are never visible in the directory.
+
+### New
+- **`.diskused`** and the **`diskused()`** SQL function: a full space report per table and index (payload, metadata, unused space, fragmentation, overflow pages). It replaces the deprecated `sqlite3_analyzer` program.
+- **`sqlite3-tool diskused <db> [schema]`** (sqlite3-tool v2.4): the same report from the command line. It opens the database read-only, so it is safe on a database an app is using.
+- Date and time: the `weekday -N` modifier (back to the previous weekday N) and `end of day` / `end of month` / `end of year`.
+- `format()` / `printf()`: `%J` writes a value as a quoted, escaped JSON string, `%j` the same without the quotes.
+- `.mode` options `--rowcount on` (prints "(N rows)"), `--ifmt` and `--fpfmt` (printf-style formats for integers and floating-point values).
+- The interactive prompt can show state through escape sequences and is read from `SQLITE_PS1` / `SQLITE_PS2`; it honours `NO_COLOR`.
+- Test suite v1.1: 29 more tests for the above, plus on-disk temporary files. Tests for features newer than the installed binary are reported as SKIP, so the suite also checks older builds.
+
+### Fixed
+- The test suite deleted its whole scratch directory before and after a run. With `WORK` pointed at an existing folder (for example `WORK=/data/local/tmp`) that removed everything in it. It now only ever deletes a directory it created itself, and refuses a non-empty one.
+
+---
+
 ## SQLite 3.53.4 — r4
 
 ### Fixed

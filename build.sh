@@ -37,6 +37,9 @@
 # Expects in the current directory, both for the same SQLite version:
 #   sqlite-amalgamation-XYYZZPP.zip
 #   sqlite-src-XYYZZPP.zip
+# Optional, checked when present (hashes from sqlite.org/download.html):
+#   SHA3SUMS               one "<sha3-256>  <file name>" line per archive;
+#                          a missing or different hash stops the build
 #
 # Output: android-module/{sqlite3.real,sqldiff,SHA256SUMS,BUILDINFO}
 
@@ -234,12 +237,28 @@ SRC_ZIP="$WORK_DIR/sqlite-src-$RAW_VER.zip"
 info "Amalgamation: $AMALG_NAME"
 info "Source:       $(basename "$SRC_ZIP")"
 
-# Print SHA3-256 so the archives can be checked against the download page.
+# SHA3-256 of the archives, as listed on the download page. With a SHA3SUMS
+# file next to them they are checked; without one they are only printed.
+SHA3_FILE="$WORK_DIR/SHA3SUMS"
 if openssl dgst -sha3-256 /dev/null >/dev/null 2>&1; then
     for z in "$AMALG_ZIP" "$SRC_ZIP"; do
+        zn=$(basename "$z")
         h=$(openssl dgst -sha3-256 -r "$z" | cut -d' ' -f1)
-        info "SHA3-256 $(basename "$z"): $h"
+        if [ -f "$SHA3_FILE" ]; then
+            want=$(tr -d '\r' < "$SHA3_FILE" | awk -v f="$zn" '$2 == f || $2 == "*" f {print tolower($1); exit}')
+            [ -n "$want" ] || die "SHA3SUMS has no line for $zn"
+            [ "$h" = "$want" ] || die "SHA3-256 mismatch for $zn
+  expected: $want
+  got:      $h
+  Download the archive again from https://www.sqlite.org/download.html"
+            ok "SHA3-256 $zn matches SHA3SUMS"
+        else
+            info "SHA3-256 $zn: $h"
+        fi
     done
+    [ -f "$SHA3_FILE" ] || info "(put the hashes from the download page in SHA3SUMS to have them checked)"
+elif [ -f "$SHA3_FILE" ]; then
+    die "SHA3SUMS present but openssl has no sha3-256 to check it (needs OpenSSL 1.1.1+)"
 fi
 
 # ── Prepare ───────────────────────────────────────────────────────────────────
@@ -300,6 +319,13 @@ SOURCE_ID=$(sed -n 's/^#define SQLITE_SOURCE_ID  *"\(.*\)"$/\1/p' "$BUILD_DIR/sr
 [ -n "$SQLITE_VERSION" ] || die "Could not read SQLITE_VERSION from sqlite3.h"
 [ "$SQLITE_VERSION" = "$ZIP_VERSION" ] \
     || die "sqlite3.h says $SQLITE_VERSION but the archive name says $ZIP_VERSION"
+# Both archives must come from the same check-in, not just the same version
+# number: sqlite3.c is regenerated from sqlite-src, sqldiff.c also comes from
+# there, while the archive name and version are read from the amalgamation.
+AMALG_SOURCE_ID=$(sed -n 's/^#define SQLITE_SOURCE_ID  *"\(.*\)"$/\1/p' "$AMALG_DIR/sqlite3.h")
+[ "$SOURCE_ID" = "$AMALG_SOURCE_ID" ] || die "the two archives are from different check-ins:
+  $(basename "$AMALG_ZIP"): $AMALG_SOURCE_ID
+  built sqlite3.h:  $SOURCE_ID"
 info "Version:      SQLite $SQLITE_VERSION"
 info "Source ID:    $SOURCE_ID"
 
@@ -666,6 +692,14 @@ else
     t_sql "bytecode vtab"      "1"   "SELECT count(*) > 0 FROM bytecode('SELECT 1');"
     t_sql "sqlite_offset()"    "1"   "CREATE TABLE a(x); INSERT INTO a VALUES(1); SELECT sqlite_offset(x) > 0 FROM a;"
     t_sql "legacy double-quoted strings (DQS=3)" "abc" 'SELECT "abc";'
+    # .diskused needs dbstat, which is a compile option of ours; check it here
+    # too in case the module suite is not next to build.sh.
+    if [ "$(printf '%s\n' "$SQLITE_VERSION" | awk -F. '{print $1 * 1000000 + $2 * 1000 + $3}')" -ge 3054000 ]; then
+        t_sql "date: end of month"  "2024-02-29" "SELECT date('2024-02-10', 'end of month');"
+        t_sql "format('%J')"        '"a\"b"'     "SELECT format('%J', 'a\"b');"
+        t_sql "diskused()"          "1" \
+              "CREATE TABLE a(x); INSERT INTO a VALUES(1); SELECT diskused('main') LIKE '%Pages in the database%';"
+    fi
     if [ "$WITH_UPDATE_LIMIT" = "1" ]; then
         t_sql "DELETE ... LIMIT" "2,3" \
               "CREATE TABLE a(x); INSERT INTO a VALUES(1),(2),(3); DELETE FROM a ORDER BY x LIMIT 1; SELECT group_concat(x) FROM a;"
@@ -801,6 +835,9 @@ if [ -n "$INSTALL_DIR" ]; then
     else
         OLD_CODE=$(sed -n 's/^versionCode=//p' "$PROP" | sed -n '1p')
         case "$OLD_CODE" in '' | *[!0-9]*) die "versionCode in $PROP is not a number: '$OLD_CODE'" ;; esac
+        # A new SQLite version is a new release without a revision suffix
+        # (v3.53.4-r4 -> v3.54.0). -rN is only for rebuilds of the same
+        # SQLite version, and those are bumped by hand.
         NEW_VER="v$SQLITE_VERSION"
         NEW_CODE=$((OLD_CODE + 1))
         set_kv "$PROP" version "$NEW_VER"

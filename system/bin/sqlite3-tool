@@ -3,7 +3,7 @@
 # Part of nikakvo/sqlite3-android-arm64-only
 # Usage: sqlite3-tool <command> [args...]
 
-VERSION="2.3"
+VERSION="2.4"
 
 # Overridable so the script can be tested against any sqlite3 build.
 SQLITE3="${SQLITE3_BIN:-/system/bin/sqlite3.real}"
@@ -103,6 +103,7 @@ ${W}Inspect:${N}
   ${G}schema${N}          <db> [table]      Show CREATE statements
   ${G}size${N}            <db>              Page stats and file size
   ${G}biggest${N}         <db> [n]          Largest tables/indexes on disk (dbstat)
+  ${G}diskused${N}        <db> [schema]     Full space report per table and index
   ${G}doctor${N}          <db>              Run sqlite3-doctor (full diagnostics)
 
 ${W}Maintain:${N}
@@ -128,6 +129,7 @@ ${W}Examples:${N}
   sqlite3-tool info /data/data/com.example/databases/app.db
   sqlite3-tool backup /data/data/com.example/databases/app.db /sdcard/app.db
   sqlite3-tool biggest /sdcard/big.db 10
+  sqlite3-tool diskused /sdcard/big.db
   sqlite3-tool compile-options FTS
 
 EOF
@@ -247,8 +249,7 @@ cmd_size() {
     printf "\n"
 }
 
-# Replaces the sqlite3_analyzer tool, which needs TCL to build and was never
-# shipped. dbstat gives the same per-object page accounting.
+# Short top-N list. For the full report use diskused below.
 cmd_biggest() {
     need_db
     LIMIT="${ARG3:-10}"
@@ -271,6 +272,32 @@ cmd_biggest() {
         printf "  %-38s %10s %10s\n" "$name" "$pages" "$(human "$bytes")"
     done
     printf "\n"
+}
+
+# The .diskused report (SQLite 3.54.0+), which replaces the deprecated
+# sqlite3_analyzer program: payload, metadata and unused bytes, fragmentation
+# and overflow pages for every table and index. Opened with -readonly, so it is
+# safe on a database an app is using; the report's scratch table lives in the
+# temp schema, never in the database itself.
+cmd_diskused() {
+    need_db
+    SCHEMA="${ARG3:-main}"
+    case "$SCHEMA" in
+        '' | *[!A-Za-z0-9_]*) err "Invalid schema name: $SCHEMA"; exit 1 ;;
+    esac
+    OUT=$("$SQLITE3" -readonly -cmd ".timeout $BUSY_MS" "$DB" ".diskused $SCHEMA" 2>&1)
+    RC=$?
+    case "$OUT" in
+        *"Page size in bytes"*) ;;
+        *"unknown command"* | *"no such function: diskused"*)
+            err "This sqlite3 has no .diskused (needs SQLite 3.54.0 or newer) - use: sqlite3-tool biggest"
+            exit 1 ;;
+        *)
+            err "diskused failed${OUT:+: $OUT}"
+            exit 1 ;;
+    esac
+    [ "$RC" -eq 0 ] || { printf '%s\n' "$OUT"; exit 1; }
+    printf '%s\n' "$OUT"
 }
 
 # ── Maintain ──────────────────────────────────────────────────────────────────
@@ -459,6 +486,7 @@ case "$CMD" in
     schema)          cmd_schema ;;
     size)            cmd_size ;;
     biggest)         cmd_biggest ;;
+    diskused)        cmd_diskused ;;
     integrity)       cmd_integrity ;;
     vacuum)          cmd_vacuum ;;
     analyze)         cmd_analyze ;;

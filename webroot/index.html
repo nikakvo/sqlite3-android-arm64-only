@@ -230,7 +230,7 @@
       <a class="nav-item" href="#usage-fts">Full-Text Search</a>
       <a class="nav-item" href="#usage-json">JSON Functions</a>
       <a class="nav-item" href="#usage-rtree">Geospatial / R-Tree</a>
-      <a class="nav-item" href="#usage-math">Math Functions</a>
+      <a class="nav-item" href="#usage-math">Math &amp; Dates</a>
       <a class="nav-item" href="#usage-session">Session / Sync</a>
       <a class="nav-item" href="#usage-percentile">Percentile &amp; Analytics</a>
       <a class="nav-item" href="#usage-debug">Inspect &amp; Debug</a>
@@ -460,6 +460,9 @@ EOF</pre>
 <span class="dot-cmd">.headers</span> on                        <span class="cm">-- show column names in output</span>
 <span class="dot-cmd">.mode</span> column                       <span class="cm">-- aligned column output</span>
 <span class="dot-cmd">.mode</span> box                          <span class="cm">-- box-drawing table output</span>
+<span class="dot-cmd">.mode</span> box --rowcount on            <span class="cm">-- ... and print "(N rows)" after each result</span>
+<span class="dot-cmd">.mode</span> list --fpfmt %.2f            <span class="cm">-- print floating-point values with 2 decimals</span>
+<span class="dot-cmd">.diskused</span>                          <span class="cm">-- space report for the open database</span>
 <span class="dot-cmd">.output</span> /data/local/tmp/out.txt    <span class="cm">-- redirect output to file</span>
 <span class="dot-cmd">.output</span> stdout                     <span class="cm">-- restore output to screen</span>
 <span class="dot-cmd">.read</span> /data/local/tmp/script.sql   <span class="cm">-- execute a SQL file</span>
@@ -529,6 +532,12 @@ sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
 <span class="kw">SELECT</span> key, value <span class="kw">FROM</span> <span class="fn">json_each</span>(<span class="str">'{"a":1,"b":2,"c":3}'</span>);
 <span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="fn">json_tree</span>(<span class="str">'{"x":{"y":99}}'</span>);</pre>
         </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Safe JSON strings with format()</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="cm">-- %J writes a value as a quoted, escaped JSON string; %j the same without the quotes</span>
+<span class="kw">SELECT</span> <span class="fn">format</span>(<span class="str">'{"name":%J}'</span>, <span class="str">'say "hi"'</span>);  <span class="cm">-- {"name":"say \"hi\""}</span>
+<span class="kw">SELECT</span> <span class="fn">format</span>(<span class="str">'%j'</span>, <span class="str">'a"b'</span>);                <span class="cm">-- a\"b</span></pre>
+        </div>
       </section>
 
       <!-- 08 RTREE -->
@@ -554,7 +563,7 @@ sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
 
       <!-- 09 MATH -->
       <section id="usage-math">
-        <div class="section-header"><span class="section-num">09</span><h2>Math Functions</h2></div>
+        <div class="section-header"><span class="section-num">09</span><h2>Math &amp; Date Functions</h2></div>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Built-in math</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
           <pre><span class="kw">SELECT</span> <span class="fn">sqrt</span>(<span class="num">144</span>);               <span class="cm">-- 12.0</span>
@@ -563,6 +572,18 @@ sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
 <span class="kw">SELECT</span> <span class="fn">log</span>(<span class="num">100</span>);               <span class="cm">-- 2.0  (log() is base 10)</span>
 <span class="kw">SELECT</span> <span class="fn">sin</span>(<span class="fn">pi</span>() / <span class="num">2</span>);          <span class="cm">-- 1.0</span>
 <span class="kw">SELECT</span> <span class="fn">floor</span>(<span class="num">3.9</span>), <span class="fn">ceil</span>(<span class="num">3.1</span>);  <span class="cm">-- 3.0 | 4.0</span></pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Date &amp; time modifiers</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="cm">-- weekday N moves forward to weekday N (0 = Sunday), weekday -N moves back;</span>
+<span class="cm">-- a date that already is that weekday stays. 2026-10-09 is a Friday.</span>
+<span class="kw">SELECT</span> <span class="fn">date</span>(<span class="str">'2026-10-09'</span>, <span class="str">'weekday 1'</span>);    <span class="cm">-- 2026-10-12 (next Monday)</span>
+<span class="kw">SELECT</span> <span class="fn">date</span>(<span class="str">'2026-10-09'</span>, <span class="str">'weekday -1'</span>);   <span class="cm">-- 2026-10-05 (previous Monday)</span>
+
+<span class="cm">-- 'end of' goes to the last moment of a day, month or year</span>
+<span class="kw">SELECT</span> <span class="fn">date</span>(<span class="str">'2024-02-10'</span>, <span class="str">'end of month'</span>); <span class="cm">-- 2024-02-29</span>
+<span class="kw">SELECT</span> <span class="fn">datetime</span>(<span class="str">'now'</span>, <span class="str">'end of day'</span>);      <span class="cm">-- today 23:59:59 (UTC)</span>
+<span class="kw">SELECT</span> <span class="fn">date</span>(<span class="str">'now'</span>, <span class="str">'localtime'</span>, <span class="str">'end of month'</span>); <span class="cm">-- last day of this month</span></pre>
         </div>
       </section>
 
@@ -630,6 +651,16 @@ sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db</pre>
 <span class="kw">PRAGMA</span> freelist_count; <span class="cm">-- deleted/free pages</span>
 <span class="kw">PRAGMA</span> page_size;      <span class="cm">-- page size in bytes</span>
 <span class="kw">SELECT</span> * <span class="kw">FROM</span> dbstat;  <span class="cm">-- page-level breakdown</span></pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-label">Space report (replaces sqlite3_analyzer)</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
+          <pre><span class="cm">-- per table and index: pages, payload, metadata, unused bytes, overflow</span>
+<span class="dot-cmd">.diskused</span>
+<span class="cm">-- the same report from SQL</span>
+<span class="kw">SELECT</span> <span class="fn">diskused</span>(<span class="str">'main'</span>);
+
+<span class="cm"># from a terminal: read-only, safe while the app is running</span>
+su -c '/system/bin/sqlite3-tool diskused /data/data/com.example/databases/app.db'</pre>
         </div>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Soundex</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
@@ -734,7 +765,7 @@ sqlite3-doctor --full  /sdcard/big.db                            <span class="cm
       <!-- 15 SQLITE3-TOOL -->
       <section id="tool-helper">
         <div class="section-header"><span class="section-num">15</span><h2>sqlite3-tool — Helper Commands</h2></div>
-        <p>16 ready-to-use commands for common maintenance, no SQL needed. Run them as <code>sqlite3-tool &lt;command&gt; &hellip;</code>. Every command waits up to 5 seconds on a busy database instead of failing with <code>database is locked</code>, refuses files that are not SQLite databases, and write commands show SQLite's own error message when something goes wrong.</p>
+        <p>17 ready-to-use commands for common maintenance, no SQL needed. Run them as <code>sqlite3-tool &lt;command&gt; &hellip;</code>. Every command waits up to 5 seconds on a busy database instead of failing with <code>database is locked</code>, refuses files that are not SQLite databases, and write commands show SQLite's own error message when something goes wrong.</p>
 
         <table class="flag-table" style="margin-bottom:14px">
           <tr><td class="flag-name">info &lt;db&gt;</td><td class="flag-desc">Quick summary: journal mode, page size, encoding, WAL size, table count.</td></tr>
@@ -743,6 +774,7 @@ sqlite3-doctor --full  /sdcard/big.db                            <span class="cm
           <tr><td class="flag-name">schema &lt;db&gt; [table]</td><td class="flag-desc">CREATE statements, ending in <code>;</code>. For one table, its indexes and triggers too.</td></tr>
           <tr><td class="flag-name">size &lt;db&gt;</td><td class="flag-desc">File size, page size, page and freelist counts, WAL size.</td></tr>
           <tr><td class="flag-name">biggest &lt;db&gt; [n]</td><td class="flag-desc">The n largest tables and indexes on disk (default 10), via <code>dbstat</code>.</td></tr>
+          <tr><td class="flag-name">diskused &lt;db&gt; [schema]</td><td class="flag-desc">Full space report per table and index (SQLite's <code>.diskused</code>): payload, metadata, unused space, fragmentation, overflow pages. Opens the database read-only.</td></tr>
           <tr><td class="flag-name">integrity &lt;db&gt;</td><td class="flag-desc"><code>PRAGMA integrity_check</code>.</td></tr>
           <tr><td class="flag-name">vacuum &lt;db&gt;</td><td class="flag-desc">Defragment and shrink the file.</td></tr>
           <tr><td class="flag-name">analyze &lt;db&gt;</td><td class="flag-desc">Refresh the query planner statistics.</td></tr>
@@ -772,7 +804,10 @@ sqlite3-tool restore /sdcard/app_backup.db /data/data/com.example/databases/app.
 
 <span class="cm"># Quick overview / tables with row counts</span>
 sqlite3-tool info   /data/local/tmp/mydb.db
-sqlite3-tool tables /data/local/tmp/mydb.db</pre>
+sqlite3-tool tables /data/local/tmp/mydb.db
+
+<span class="cm"># Where the space goes, table by table</span>
+sqlite3-tool diskused /data/local/tmp/mydb.db</pre>
         </div>
 
         <div class="callout safe"><div class="callout-icon">🛡</div><div class="callout-text"><strong>Backup and restore go through SQLite, not <code>cp</code>.</strong> <code>backup</code> uses the online backup API (<code>.backup</code>): safe on a live database and it needs no write access to the source. It writes to a temporary file, checks it with <code>integrity_check</code>, and only then replaces the destination — a failed backup leaves your previous copy untouched, and giving the same file as source and destination is refused. <code>restore</code> uses <code>.restore</code>, which takes the proper locks and keeps the database file's owner and SELinux label, so the app can still open it afterwards.</div></div>
@@ -846,7 +881,7 @@ EOF</pre>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Run on the phone</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
           <pre>cp /sdcard/Download/sqlite3-module-test.sh ~/
-su -c "sh /data/data/com.termux/files/home/sqlite3-module-test.sh"</pre>
+su -c 'sh /data/data/com.termux/files/home/sqlite3-module-test.sh'</pre>
         </div>
         <div class="code-block">
           <div class="code-header"><span class="code-label">Reading the result</span><div class="code-header-right"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="copy-btn" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div></div>
@@ -863,7 +898,7 @@ echo $?</pre>
 KEEP=1      <span class="cm"># keep the scratch directory in /data/local/tmp</span>
 LOG=/path   <span class="cm"># write the log somewhere else</span>
 
-su -c "VERBOSE=1 sh /data/data/com.termux/files/home/sqlite3-module-test.sh"</pre>
+su -c 'VERBOSE=1 sh /data/data/com.termux/files/home/sqlite3-module-test.sh'</pre>
         </div>
       </section>
 

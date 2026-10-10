@@ -8,26 +8,43 @@
 #
 # On the phone (Termux cannot execute scripts from /sdcard):
 #   cp /sdcard/Download/sqlite3-module-test.sh ~/
-#   su -c "sh /data/data/com.termux/files/home/sqlite3-module-test.sh"
+#   su -c 'sh /data/data/com.termux/files/home/sqlite3-module-test.sh'
 #
 # The full log is written to /sdcard/Download/sqlite3-module-test.log.
 #
 # Environment:
 #   BIN_DIR   directory holding sqlite3, sqlite3.real, sqldiff, sqlite3-tool
 #             and sqlite3-doctor (default /system/bin)
-#   WORK      scratch directory (default /data/local/tmp/sqlite3-test.<pid>)
+#   WORK      scratch directory (default /data/local/tmp/sqlite3-test.<pid>).
+#             It must not exist yet, or be empty, or be a scratch directory
+#             of an earlier run; anything else is refused, never deleted.
 #   LOG       log file (default /sdcard/Download/sqlite3-module-test.log)
 #   KEEP=1    keep the scratch directory
 #   VERBOSE=1 print the output of every passing test too
 #
+# Tests for features of a newer SQLite than the binary under test are
+# reported as SKIP, so the same suite can check an older build too.
+#
 # Exit status: 0 if every test passed, 1 otherwise.
 
-SUITE_VERSION="1.0"
+SUITE_VERSION="1.1"
 MOD_ID="sqlite3-arm64-only"
 
 BIN_DIR="${BIN_DIR:-/system/bin}"
 [ -d /data/local/tmp ] && DEF_WORK="/data/local/tmp/sqlite3-test.$$" || DEF_WORK="${TMPDIR:-/tmp}/sqlite3-test.$$"
 WORK="${WORK:-$DEF_WORK}"
+# The scratch directory is wiped before and after the run. Only ever wipe a
+# directory this suite created: it carries this marker file. With a WORK such
+# as /data/local/tmp, version 1.0 would have deleted everything in it.
+MARKER=".sqlite3-module-test-scratch"
+case "$WORK" in
+    '' | / | /data | /data/local | /data/local/tmp | /sdcard | /sdcard/ | /system | /system/* | /tmp | "${HOME:-/}")
+        echo "Refusing to use WORK=$WORK as the scratch directory" >&2; exit 1 ;;
+esac
+if [ -d "$WORK" ] && [ ! -f "$WORK/$MARKER" ] && [ -n "$(ls -A "$WORK" 2>/dev/null)" ]; then
+    echo "WORK=$WORK exists and is not empty; not deleting it. Use a new directory." >&2
+    exit 1
+fi
 if [ -z "${LOG:-}" ]; then
     if [ -d /sdcard/Download ] && [ -w /sdcard/Download ]; then
         LOG=/sdcard/Download/sqlite3-module-test.log
@@ -92,6 +109,11 @@ $_out"
 # q <sql...> — run SQL on an in-memory database with the raw binary
 q() { "$REAL" -batch :memory: "$@" 2>&1; }
 
+# at_least <x.y.z> - is the binary under test at least that SQLite version?
+SQLV=""
+vnum() { printf '%s\n' "$1" | awk -F. '{printf "%d", $1 * 1000000 + $2 * 1000 + $3}'; }
+at_least() { [ -n "$SQLV" ] && [ "$(vnum "$SQLV")" -ge "$(vnum "$1")" ]; }
+
 # ── Test groups ───────────────────────────────────────────────────────────────
 test_files() {
     section "Files"
@@ -103,7 +125,7 @@ test_files() {
     [ -x "$REAL" ] || { fail "cannot continue without sqlite3.real"; return 1; }
     V=$("$REAL" --version 2>&1)
     case "$V" in
-        3.*) pass "sqlite3.real runs: $(printf '%s' "$V" | cut -d' ' -f1)" ;;
+        3.*) SQLV=$(printf '%s' "$V" | cut -d' ' -f1); pass "sqlite3.real runs: $SQLV" ;;
         *) fail "sqlite3.real runs" "$V"; return 1 ;;
     esac
 }
@@ -187,6 +209,63 @@ test_features() {
     t_has ".session is available (SESSION)" ".session" "$SESS"
 }
 
+test_sqlite_3_54() {
+    section "SQLite 3.54.0 features"
+    if ! at_least 3.54.0; then
+        skip "SQLite $SQLV is older than 3.54.0"
+        return 0
+    fi
+    # Date and time: "weekday -N" moves back to weekday N (0 = Sunday) unless
+    # the date already is one; "end of" goes to the last moment of the unit.
+    # 2026-10-09 is a Friday.
+    t_eq "date: weekday -1 (back to Monday)" "2026-10-05" "$(q "SELECT date('2026-10-09','weekday -1');")"
+    t_eq "date: weekday -5 on a Friday stays" "2026-10-09" "$(q "SELECT date('2026-10-09','weekday -5');")"
+    t_eq "date: end of month (leap year)" "2024-02-29" "$(q "SELECT date('2024-02-10','end of month');")"
+    t_eq "date: end of month" "2026-02-28" "$(q "SELECT date('2026-02-10','end of month');")"
+    t_eq "date: end of day" "2026-10-09 23:59:59" "$(q "SELECT datetime('2026-10-09 10:00','end of day');")"
+    t_eq "date: end of year" "2026-12-31" "$(q "SELECT date('2026-10-09','end of year');")"
+
+    # format()/printf(): %J renders a JSON string literal, %j the same
+    # without the surrounding quotes.
+    t_eq "format('%J')" '"a\"b"' "$(q "SELECT format('%J', 'a\"b');")"
+    t_eq "format('%j')" 'x\"y' "$(q "SELECT format('%j', 'x\"y');")"
+    t_eq "format('%J') builds valid JSON" "1" \
+        "$(q "SELECT json_valid(format('{\"k\":%J}', 'q\"'||char(10)||char(9)||'\\'));")"
+
+    # Query planner changes: same results, less work.
+    t_eq "UNION ... LIMIT 1" "1" "$(q 'SELECT count(*) FROM (SELECT 1 UNION SELECT 2 LIMIT 1);')"
+    t_eq "IN (SELECT DISTINCT ...)" "1" "$(q 'SELECT 3 IN (SELECT DISTINCT value FROM generate_series(1,5));')"
+    t_eq "expr OR TRUE / expr OR FALSE" "3|1" \
+        "$(q 'CREATE TABLE a(x); INSERT INTO a VALUES(1),(2),(3); SELECT (SELECT count(*) FROM a WHERE x=5 OR TRUE)||"|"||(SELECT count(*) FROM a WHERE x=2 OR FALSE);')"
+    t_eq "UPDATE keeps an expression index correct" "ok|Z" \
+        "$(q "CREATE TABLE t(a,b); CREATE INDEX i ON t(lower(a)); INSERT INTO t VALUES('X',1),('Y',2);" \
+             "UPDATE t SET b=b+1; UPDATE t SET a='Z' WHERE b=3;" \
+             "SELECT (SELECT integrity_check FROM pragma_integrity_check)||'|'||(SELECT a FROM t WHERE lower(a)='z');")"
+    t_has "ALTER TABLE refuses a column named rowid" "rowid" \
+        "$(q 'CREATE TABLE t(x);' 'ALTER TABLE t ADD COLUMN rowid INT;')"
+    t_has "new limits: schema, trigger_steps" "trigger_steps" "$(q '.limit')"
+
+    # CLI output options
+    t_eq ".mode --rowcount on" "1
+2
+(2 rows)" "$(q '.mode list --rowcount on' 'SELECT 1 UNION SELECT 2;')"
+    t_eq ".mode --ifmt / --fpfmt" "00000042|3.142" "$(q '.mode list --ifmt %08d --fpfmt %.3f' 'SELECT 42, 3.14159;')"
+    t_eq "column modes show the header with no rows" "a
+-" "$(q '.mode column' 'SELECT 1 AS a WHERE 0;')"
+
+    # diskused(): the sqlite3_analyzer replacement, built into the shell.
+    DU="$WORK/du.db"
+    "$REAL" "$DU" "CREATE TABLE plain(id INTEGER PRIMARY KEY, v); CREATE INDEX plain_v ON plain(v);" \
+        "INSERT INTO plain(v) SELECT randomblob(200) FROM generate_series(1,500);" >/dev/null 2>&1
+    t_eq "diskused() SQL function" "1" "$("$REAL" "$DU" "SELECT diskused('main') LIKE '%Pages in the database%';" 2>&1)"
+    OUT=$("$WRAP" -readonly "$DU" .diskused 2>&1)
+    t_has ".diskused through the wrapper, read-only" "PLAIN_V" "$OUT"
+    PAGES=$(printf '%s\n' "$OUT" | sed -n 's/^Pages in the database\.*  *\([0-9][0-9]*\).*/\1/p')
+    t_eq ".diskused page count = PRAGMA page_count" "$("$REAL" "$DU" 'PRAGMA page_count;' 2>&1)" "$PAGES"
+    t_eq ".diskused leaves the database unchanged" "ok|2" \
+        "$("$REAL" "$DU" "SELECT (SELECT integrity_check FROM pragma_integrity_check)||'|'||(SELECT count(*) FROM sqlite_schema);" 2>&1)"
+}
+
 test_heavy() {
     section "Workload"
     H="$WORK/heavy.db"
@@ -198,6 +277,16 @@ test_heavy() {
     t_eq "integrity_check on the result" "ok" "$("$REAL" "$H" 'PRAGMA integrity_check;' 2>&1)"
     t_eq "ORDER BY over 100k rows" "100000" "$("$REAL" "$H" 'SELECT count(*) FROM (SELECT a FROM t NOT INDEXED ORDER BY a DESC, b);' 2>&1)"
     t_eq "VACUUM" "ok" "$("$REAL" "$H" 'VACUUM;' 'PRAGMA quick_check;' 2>&1)"
+    # Temporary files on disk (temp_store=FILE). SQLite 3.54.0 opens them with
+    # O_TMPFILE where the file system supports it, else falls back to a named
+    # file: either way the sort must finish and leave nothing behind.
+    TD="$WORK/tmpfiles"
+    mkdir -p "$TD"
+    t_eq "on-disk temp files (temp_store=FILE)" "20000" \
+        "$(cd "$TD" && SQLITE_TMPDIR="$TD" "$REAL" :memory: 'PRAGMA temp_store=FILE;' \
+            'CREATE TEMP TABLE x(a); INSERT INTO x SELECT randomblob(500) FROM generate_series(1,20000);' \
+            'SELECT count(*) FROM (SELECT a FROM x ORDER BY a);' 2>&1)"
+    t_eq "... and no temp files are left behind" "" "$(ls -A "$TD")"
 }
 
 test_wrapper() {
@@ -297,6 +386,16 @@ test_tool() {
     t_rc  "schema <missing table> fails" 1 "$TOOL" schema "$T" nope
     t_has "size" "Page count:" "$("$TOOL" size "$T" 2>&1)"
     t_has "biggest (dbstat)" "plain" "$("$TOOL" biggest "$T" 3 2>&1)"
+    if at_least 3.54.0; then
+        OUT=$("$TOOL" diskused "$T" 2>&1); RC=$?
+        t_eq  "diskused exit status" "0" "$RC"
+        t_has "diskused: report per index" "PLAIN_V" "$OUT"
+        t_has "diskused: quoted table name" "WE\"IRD T'ABLE" "$OUT"
+        t_rc  "diskused <unknown schema> fails" 1 "$TOOL" diskused "$T" nope
+        t_rc  "diskused refuses a bad schema name" 1 "$TOOL" diskused "$T" "x;y"
+    else
+        t_has "diskused on SQLite $SQLV says it needs 3.54.0" "3.54.0" "$("$TOOL" diskused "$T" 2>&1)"
+    fi
     t_rc  "integrity" 0 "$TOOL" integrity "$T"
     t_rc  "analyze" 0 "$TOOL" analyze "$T"
     t_rc  "optimize" 0 "$TOOL" optimize "$T"
@@ -415,6 +514,7 @@ main() {
     test_compile_options
     test_defaults
     test_features
+    test_sqlite_3_54
     test_heavy
     test_wrapper
     test_sqldiff
@@ -423,8 +523,10 @@ main() {
     test_module
 }
 
-rm -rf "$WORK"
+# Safe: checked above that WORK is missing, empty, or ours (has the marker).
+[ -d "$WORK" ] && rm -rf "$WORK"
 mkdir -p "$WORK" || { echo "cannot create $WORK" >&2; exit 1; }
+: > "$WORK/$MARKER"
 : > "$RESULTS"
 
 main 2>&1 | tee "$LOG"
@@ -437,5 +539,5 @@ P=$(grep -c PASS "$RESULTS"); F=$(grep -c FAIL "$RESULTS"); S=$(grep -c SKIP "$R
     printf 'Log: %s\n' "$LOG"
 } | tee -a "$LOG"
 
-[ "${KEEP:-0}" = "1" ] || rm -rf "$WORK"
+if [ "${KEEP:-0}" != "1" ] && [ -f "$WORK/$MARKER" ]; then rm -rf "$WORK"; fi
 [ "$F" -eq 0 ]

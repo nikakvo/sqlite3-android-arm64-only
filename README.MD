@@ -72,13 +72,13 @@ Applied to every connection, including ones made with `.open`:
 | `sqlite3` | wrapper: sets `busy_timeout` and a RAM-scaled `mmap_size`, then runs `sqlite3.real` |
 | `sqlite3.real` | the compiled binary — rebuilt from each upstream SQLite release |
 | `sqldiff` | official SQLite tool — diff two databases |
-| `sqlite3-tool` | 16 helper commands for inspection and maintenance |
+| `sqlite3-tool` | 17 helper commands for inspection and maintenance |
 | `sqlite3-doctor` | full diagnostic, exits non-zero on problems |
 
 ### sqlite3-tool
 
 ```
-Inspect:   info · tables · indexes · schema · size · biggest · doctor
+Inspect:   info · tables · indexes · schema · size · biggest · diskused · doctor
 Maintain:  integrity · vacuum · analyze · optimize · wal-checkpoint
 Data:      backup · restore
 Build:     compile-options · version
@@ -88,10 +88,11 @@ Build:     compile-options · version
 sqlite3-tool info /data/data/com.example/databases/app.db
 sqlite3-tool backup /data/data/com.example/databases/app.db /sdcard/app.db
 sqlite3-tool biggest /sdcard/big.db 10
+sqlite3-tool diskused /sdcard/big.db
 sqlite3-tool compile-options WORKER
 ```
 
-`backup` and `restore` go through SQLite's online backup API, not `cp`: safe on a live database, no write access needed to the source, owner and SELinux label preserved, verified with `integrity_check` before the destination is replaced — a failed backup leaves the previous copy untouched. `biggest` lists the largest tables and indexes on disk via `dbstat`, the part of `sqlite3_analyzer` people actually want without needing TCL to build it.
+`backup` and `restore` go through SQLite's online backup API, not `cp`: safe on a live database, no write access needed to the source, owner and SELinux label preserved, verified with `integrity_check` before the destination is replaced - a failed backup leaves the previous copy untouched. `biggest` is a quick top-N list of the largest tables and indexes via `dbstat`. `diskused` prints SQLite's full space report (`.diskused`, which replaced the deprecated `sqlite3_analyzer`): payload, metadata, unused space, fragmentation and overflow pages per table and index. It opens the database read-only, so it is safe on a database an app is using.
 
 Every command waits up to 5 s on a busy database, refuses files that are not SQLite databases, and shows SQLite's own error when a write fails. Environment: `SQLITE3_BIN`, `SQLITE3_BUSY_MS` (default 5000), `NO_COLOR`.
 
@@ -167,6 +168,8 @@ export ANDROID_NDK_HOME=/path/to/android-ndk
 | `WITH_SCANSTATUS=1` | enable `.scanstats` |
 | `SKIP_HOST_TEST=1` | skip the functional test on the build machine |
 
+Optional: a `SHA3SUMS` file next to the archives, one `<sha3-256>  <file name>` line per archive, with the hashes from the [download page](https://www.sqlite.org/download.html). When it is there, a missing or different hash stops the build.
+
 Key flags — the full list, with what each one does, is in the module's help page:
 
 ```
@@ -180,12 +183,14 @@ Key flags — the full list, with what each one does, is in the module's help pa
 
 Nothing is written to `android-module/` until the staged binaries pass every check:
 
+- **Archives**: both come from the same SQLite check-in (`SQLITE_SOURCE_ID`), and match `SHA3SUMS` when that file is present.
+
 - **Compile options** read back out of the binary and checked against the flag list — missing, wrong-valued, and unwanted options (`SECURE_DELETE`, …) all fail the build.
 - **Platform flags** leave no trace in the option list, so it checks that the binary really imports `malloc_usable_size()`, `fdatasync()` and `localtime_r()`.
 - **ELF**, both binaries: AArch64, PIE, BIND_NOW, RELRO, stripped, 16 KB aligned segments, no libraries besides `libc.so`, `libm.so`, `libdl.so`.
 - **Functional test**: the same sources and SQLite flags built for the host and run through FTS5, FTS4, R-Tree, Geopoly, JSON, math, percentile, dbstat, double-quoted strings, `DELETE … LIMIT` and `sqldiff`.
 
-- **Module test suite**: `tests/sqlite3-module-test.sh` run against that host build through the module's own wrapper, `sqlite3-tool` and `sqlite3-doctor` (168 tests). Needs `--install DIR`, or `build.sh` inside the repository.
+- **Module test suite**: `tests/sqlite3-module-test.sh` run against that host build through the module's own wrapper, `sqlite3-tool` and `sqlite3-doctor` (197 tests). Needs `--install DIR`, or `build.sh` inside the repository.
 
 It then writes `SHA256SUMS` and `BUILDINFO` (SQLite source ID, NDK revision, API level, defines).
 
@@ -197,7 +202,7 @@ After installing a new release, run the same suite on the device. Termux cannot 
 
 ```sh
 cp /sdcard/Download/sqlite3-module-test.sh ~/
-su -c "sh /data/data/com.termux/files/home/sqlite3-module-test.sh"
+su -c 'sh /data/data/com.termux/files/home/sqlite3-module-test.sh'
 ```
 
 It checks the binary, every compile option, the SQL features, the wrapper (including waiting on a locked database), `sqldiff`, both tools and the installation itself (permissions, SELinux label, `module.prop`, `.sqliterc-full`). The log goes to `/sdcard/Download/sqlite3-module-test.log`; the exit status is 0 only when everything passed.
