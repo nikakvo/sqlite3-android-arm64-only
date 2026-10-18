@@ -1,5 +1,13 @@
 # Changelog
 
+## SQLite 3.54.1
+
+### Changed
+- **SQLite 3.54.1** (from 3.54.0), a patch release with fixes for problems reported in 3.54.0. Upstream also fixed a possible heap-buffer overflow that affects only 32-bit builds; this module is 64-bit only, so it was never affected.
+- No changes to the wrapper, `sqlite3-tool`, `sqlite3-doctor`, the compile options or the help page.
+
+---
+
 ## SQLite 3.54.0
 
 ### Changed
