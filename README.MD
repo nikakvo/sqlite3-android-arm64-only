@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="sqlite3.png" alt="DNSCrypt Proxy Arm64" width="640">
-</p>
+<p align="center"><img src="sqlite3.png" alt="Tears GPS"></p>
 
 # SQLite3 Android ARM64 Only
 
