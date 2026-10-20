@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="sqlite3.png" alt="DNSCrypt Proxy Arm64" width="640">
+</p>
+
 # SQLite3 Android ARM64 Only
 
 A standalone **max-feature SQLite3 shell** for rooted Android ARM64 devices.
