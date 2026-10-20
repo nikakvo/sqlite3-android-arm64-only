@@ -1,4 +1,4 @@
-<p align="center"><img src="sqlite3.png" alt="Tears GPS"></p>
+<p align="center"><img src="sqlite3.png" alt="SQLite3 Arm64 Only"></p>
 
 # SQLite3 Android ARM64 Only
 
