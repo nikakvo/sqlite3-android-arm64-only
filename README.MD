@@ -158,8 +158,9 @@ sudo apt install build-essential unzip zip
 # put sqlite-amalgamation-XYYZZPP.zip and the matching sqlite-src-XYYZZPP.zip next to build.sh
 export ANDROID_NDK_HOME=/path/to/android-ndk
 ./build.sh                                    # -> ./android-module/
-./build.sh --install /path/to/module          # also copies the binaries into the module
-./build.sh --install /path/to/module --zip    # ... and packs <id>-<version>.zip for the release
+./build.sh --module                           # + the complete flashable zip, in /mnt/d/moduls if it exists
+./build.sh --module --out /path/to/dir        # ... or in another folder
+./build.sh --install /path/to/module --zip    # use a local module tree instead
 ./build.sh --help                             # all options
 ```
 
@@ -192,7 +193,7 @@ Nothing is written to `android-module/` until the staged binaries pass every che
 - **ELF**, both binaries: AArch64, PIE, BIND_NOW, RELRO, stripped, 16 KB aligned segments, no libraries besides `libc.so`, `libm.so`, `libdl.so`.
 - **Functional test**: the same sources and SQLite flags built for the host and run through FTS5, FTS4, R-Tree, Geopoly, JSON, math, percentile, dbstat, double-quoted strings, `DELETE … LIMIT` and `sqldiff`.
 
-- **Module test suite**: `tests/sqlite3-module-test.sh` run against that host build through the module's own wrapper, `sqlite3-tool` and `sqlite3-doctor` (238 tests). Needs `--install DIR`, or `build.sh` inside the repository.
+- **Module test suite**: `tests/sqlite3-module-test.sh` run against that host build through the module's own wrapper, `sqlite3-tool` and `sqlite3-doctor` (238 tests). Needs `--module`, `--install DIR`, or the scripts next to `build.sh`.
 
 It then writes `SHA256SUMS` and `BUILDINFO` (SQLite source ID, NDK revision, API level, defines).
 

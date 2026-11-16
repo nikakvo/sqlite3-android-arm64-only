@@ -3,9 +3,20 @@
 # Tears Burn / nikakvo
 #
 # Usage:
+#   ./build.sh --module [--out DIR]          build + ready-to-flash module zip
 #   ./build.sh [--install DIR [--zip]] [--keep-build]
 #
 # Options:
+#   --module        after a verified build, download the module's current files
+#                   from GitHub (main branch) into ./module/, put the new
+#                   binaries in, update module.prop and update.json if the
+#                   SQLite version changed, and pack the complete flashable zip
+#                   (banner, WebUI and all) into --out. The module test suite
+#                   then also uses the scripts from GitHub, so no copies of
+#                   sqlite3, sqlite3-tool, sqlite3-doctor or the suite are needed
+#                   next to build.sh any more.
+#   --out DIR       where --module writes the zip (default: /mnt/d/moduls if it
+#                   exists, otherwise the current directory)
 #   --install DIR   after a verified build, copy the binaries into the module
 #                   tree DIR; if the SQLite version changed, also update
 #                   module.prop and update.json
@@ -28,6 +39,10 @@
 #   SKIP_HOST_TEST=1       skip the functional tests on the build machine (the
 #                          built-in checks and tests/sqlite3-module-test.sh)
 #   HOST_CC=cc             host compiler for the amalgamation and the host test
+#   MODULE_REPO=owner/name GitHub repository for --module
+#                          (default nikakvo/sqlite3-android-arm64-only)
+#   MODULE_SRC=DIR         --module: copy the module files from DIR instead of
+#                          downloading them (e.g. a module folder you edited)
 #
 # Build machine (Debian/Ubuntu/WSL):
 #   sudo apt install build-essential unzip zip
@@ -42,6 +57,8 @@
 #                          a missing or different hash stops the build
 #
 # Output: android-module/{sqlite3.real,sqldiff,SHA256SUMS,BUILDINFO}
+#         --module: <out>/<id>-<version>.zip, and ./module/ with the files that
+#         changed for the repository (module.prop, update.json, system/bin/*)
 
 set -Eeuo pipefail
 shopt -s nullglob
@@ -85,6 +102,8 @@ OUT_DIR="$WORK_DIR/android-module"
 INSTALL_DIR=""
 KEEP_BUILD=0
 MAKE_ZIP=0
+MODULE=0
+ZIP_DIR=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --install)
@@ -95,12 +114,50 @@ while [ $# -gt 0 ]; do
         --install=*) INSTALL_DIR="${1#*=}"; shift ;;
         --keep-build) KEEP_BUILD=1; shift ;;
         --zip) MAKE_ZIP=1; shift ;;
+        --module) MODULE=1; shift ;;
+        --out)
+            [ $# -ge 2 ] && [ -n "$2" ] || die "--out needs a directory"
+            ZIP_DIR="$2"; shift 2 ;;
+        --out=*) ZIP_DIR="${1#*=}"; shift ;;
         -h|--help) usage; exit 0 ;;
         *) die "Unknown argument: $1 (see --help)" ;;
     esac
 done
 
-[ "$MAKE_ZIP" = "0" ] || [ -n "$INSTALL_DIR" ] || die "--zip needs --install DIR"
+[ "$MAKE_ZIP" = "0" ] || [ -n "$INSTALL_DIR" ] || [ "$MODULE" = "1" ] || die "--zip needs --install DIR"
+[ -z "$ZIP_DIR" ] || [ "$MODULE" = "1" ] || [ "$MAKE_ZIP" = "1" ] || die "--out needs --module or --zip"
+[ "$MODULE" = "0" ] || [ -z "$INSTALL_DIR" ] || die "--module and --install cannot be used together"
+
+# --module: fetch the module tree first, so the test suite below runs the
+# scripts that will actually ship. It is the same as --install ./module --zip
+# on a fresh copy of the repository.
+if [ "$MODULE" = "1" ]; then
+    MODULE_REPO="${MODULE_REPO:-nikakvo/sqlite3-android-arm64-only}"
+    MOD_TREE="$WORK_DIR/module"
+    MOD_NEW="$WORK_DIR/.module_new"
+    rm -rf "$MOD_NEW"
+    mkdir -p "$MOD_NEW"
+    if [ -n "${MODULE_SRC:-}" ]; then
+        [ -f "$MODULE_SRC/module.prop" ] || die "MODULE_SRC has no module.prop: $MODULE_SRC"
+        cp -a "$MODULE_SRC"/. "$MOD_NEW/"
+        printf '  [INFO]  module files from %s\n' "$MODULE_SRC"
+    else
+        command -v curl >/dev/null || die "--module needs curl (sudo apt install curl)"
+        printf '  [INFO]  downloading the module files from github.com/%s (main)\n' "$MODULE_REPO"
+        curl -fsSL "https://codeload.github.com/$MODULE_REPO/tar.gz/refs/heads/main" \
+            | tar xz -C "$MOD_NEW" --strip-components=1 \
+            || die "could not download github.com/$MODULE_REPO (no network? set MODULE_SRC=DIR)"
+    fi
+    [ -f "$MOD_NEW/module.prop" ] || die "the downloaded files have no module.prop"
+    rm -rf "$MOD_TREE"
+    mv "$MOD_NEW" "$MOD_TREE"
+    INSTALL_DIR="$MOD_TREE"
+    MAKE_ZIP=1
+    if [ -z "$ZIP_DIR" ]; then
+        if [ -d /mnt/d/moduls ]; then ZIP_DIR=/mnt/d/moduls; else ZIP_DIR="$WORK_DIR"; fi
+    fi
+fi
+[ -z "$ZIP_DIR" ] || { [ -d "$ZIP_DIR" ] || die "Not a directory: $ZIP_DIR"; ZIP_DIR="$(cd "$ZIP_DIR" && pwd)"; }
 
 # Check the install target now, not after a multi-minute build.
 if [ -n "$INSTALL_DIR" ]; then
@@ -189,7 +246,7 @@ pick_tool() {
 READELF=$(pick_tool readelf) || die "readelf not found (neither in the NDK nor on PATH)"
 STRINGS=$(pick_tool strings) || die "strings not found (neither in the NDK nor on PATH)"
 command -v unzip >/dev/null || die "unzip is required (sudo apt install unzip)"
-[ "$MAKE_ZIP" = "0" ] || command -v zip >/dev/null || die "--zip needs zip (sudo apt install zip)"
+[ "$MAKE_ZIP" = "0" ] || command -v zip >/dev/null || die "--zip/--module needs zip (sudo apt install zip)"
 if command -v sha256sum >/dev/null; then SHA256=(sha256sum)
 elif command -v shasum >/dev/null; then SHA256=(shasum -a 256)
 else die "sha256sum or shasum is required"; fi
@@ -874,7 +931,16 @@ if [ -n "$INSTALL_DIR" ]; then
                  post-fs-data.sh service.sh uninstall.sh action.sh; do
             [ -e "$INSTALL_DIR/$f" ] && ENTRIES+=("$f")
         done
-        ZIP_OUT="$WORK_DIR/${MOD_ID}-${MOD_VER}.zip"
+        # The banner the manager shows (banner= in module.prop) must be in the
+        # zip too; it sits at the root of the module tree.
+        BANNER=$(sed -n 's/^banner=//p' "$PROP" | sed -n '1p' | tr -d '\r')
+        if [ -n "$BANNER" ]; then
+            case "$BANNER" in
+                http://* | https://*) ;;
+                *) [ -f "$INSTALL_DIR/$BANNER" ] && ENTRIES+=("$BANNER") || warn "banner $BANNER named in module.prop is missing" ;;
+            esac
+        fi
+        ZIP_OUT="${ZIP_DIR:-$WORK_DIR}/${MOD_ID}-${MOD_VER}.zip"
         rm -f "$ZIP_OUT"
         # A module tree on a Windows drive (/mnt/c/...) collects files that must
         # not ship: "name:Zone.Identifier" markers WSL shows for files copied from
@@ -889,6 +955,14 @@ if [ -n "$INSTALL_DIR" ]; then
             *"${NL}module.prop${NL}"*) ;;
             *) die "module.prop is not at the root of $ZIP_OUT" ;;
         esac
+        # Every script and binary the module needs must be in it.
+        for f in customize.sh service.sh system/bin/sqlite3 system/bin/sqlite3.real system/bin/sqldiff \
+                 system/bin/sqlite3-tool system/bin/sqlite3-doctor ${BANNER:+"$BANNER"}; do
+            case "$ZIP_LIST" in
+                *"${NL}$f${NL}"*) ;;
+                *) die "$f is missing from $ZIP_OUT" ;;
+            esac
+        done
         ok "$(basename "$ZIP_OUT") - $(du -h "$ZIP_OUT" | cut -f1), $("${SHA256[@]}" "$ZIP_OUT" | cut -c1-16)…"
     fi
 fi
@@ -906,9 +980,14 @@ info "Time:           $(( $(date +%s) - START_TIME )) s"
 printf '\n'
 ls -lh "$OUT_DIR/"
 printf '\n'
-if [ -z "$INSTALL_DIR" ]; then
+if [ "$MODULE" = "1" ]; then
+    info "Flash: $ZIP_OUT"
+    info "For a release, upload from $INSTALL_DIR to the repository:"
+    printf '  %ssystem/bin/sqlite3.real%s, %ssystem/bin/sqldiff%s, %smodule.prop%s, a CHANGELOG entry, %supdate.json%s last\n\n' \
+        "$G" "$N" "$G" "$N" "$G" "$N" "$G" "$N"
+elif [ -z "$INSTALL_DIR" ]; then
     info "Copy these into the module:"
     printf '  %ssystem/bin/sqlite3.real%s  ← main binary\n' "$G" "$N"
     printf '  %ssystem/bin/sqldiff%s       ← diff tool\n' "$G" "$N"
-    printf '  or re-run with: %s./build.sh --install /path/to/module%s\n\n' "$G" "$N"
+    printf '  or re-run with: %s./build.sh --module%s (complete zip in /mnt/d/moduls)\n\n' "$G" "$N"
 fi
