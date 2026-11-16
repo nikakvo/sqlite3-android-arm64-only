@@ -24,11 +24,11 @@ Built from the official SQLite source with the Android NDK and packaged as a Mag
 
 | | |
 |---|---|
-| `UPDATE` / `DELETE … ORDER BY … LIMIT` | works — the parser is regenerated from `sqlite-src`, since the flag alone does nothing with the ready-made amalgamation |
+| `UPDATE` / `DELETE … ORDER BY … LIMIT` | works - the parser is regenerated from `sqlite-src`, since the flag alone does nothing with the ready-made amalgamation |
 | Double-quoted strings (`DQS=3`) | accepted, so app databases whose views or triggers use `"text"` can be read, written and altered |
 | `fdatasync()` on commit | no metadata flush on every sync |
 | `malloc_usable_size()` | no 8-byte size header in front of every allocation |
-| `secure_delete` | **off** — freed pages are not zero-filled, which saves writes on flash |
+| `secure_delete` | **off** - freed pages are not zero-filled, which saves writes on flash |
 | Extension loading | omitted |
 
 ---
@@ -46,7 +46,7 @@ Built from the official SQLite source with the Android NDK and packaged as a Mag
 
 > **FTS4 is there for Android's own databases** (contacts, calendar, SMS); FTS5 is an independent engine with BM25 ranking and prefix queries.
 >
-> **JSON and `sqlite3_deserialize()` work**, but their old flags no longer exist in SQLite, so `sqlite_compileoption_used()` returns 0 for both — test the feature, not the flag.
+> **JSON and `sqlite3_deserialize()` work**, but their old flags no longer exist in SQLite, so `sqlite_compileoption_used()` returns 0 for both - test the feature, not the flag.
 >
 > **`STMT_SCANSTATUS` is opt-in**, since it adds counters to every `sqlite3_step()`. Rebuild with `WITH_SCANSTATUS=1 ./build.sh` if you want `.scanstats`.
 
@@ -57,7 +57,7 @@ Applied to every connection, including ones made with `.open`:
 | Setting | Value |
 |---|---|
 | `THREADSAFE` | 1 (full mutex serialization) |
-| `TEMP_STORE` | 2 — memory, `PRAGMA temp_store` can override |
+| `TEMP_STORE` | 2 - memory, `PRAGMA temp_store` can override |
 | `DEFAULT_CACHE_SIZE` | -16000 (~16 MB) |
 | `DEFAULT_SYNCHRONOUS` / `DEFAULT_WAL_SYNCHRONOUS` | 1 (NORMAL) |
 | `DEFAULT_FOREIGN_KEYS` | 1 (ON) |
@@ -72,8 +72,8 @@ Applied to every connection, including ones made with `.open`:
 | Tool | Purpose |
 |---|---|
 | `sqlite3` | wrapper: sets `busy_timeout` and a RAM-scaled `mmap_size`, then runs `sqlite3.real` |
-| `sqlite3.real` | the compiled binary — rebuilt from each upstream SQLite release |
-| `sqldiff` | official SQLite tool — diff two databases |
+| `sqlite3.real` | the compiled binary - rebuilt from each upstream SQLite release |
+| `sqldiff` | official SQLite tool - diff two databases |
 | `sqlite3-tool` | 17 helper commands for inspection and maintenance |
 | `sqlite3-doctor` | full diagnostic, exits non-zero on problems |
 
@@ -87,11 +87,11 @@ Build:     compile-options · version
 ```
 
 ```sh
-sqlite3-tool info /data/data/com.example/databases/app.db
-sqlite3-tool backup /data/data/com.example/databases/app.db /sdcard/app.db
-sqlite3-tool biggest /sdcard/big.db 10
-sqlite3-tool diskused /sdcard/big.db
-sqlite3-tool compile-options WORKER
+su -c '/system/bin/sqlite3-tool info /data/data/com.example/databases/app.db'
+su -c '/system/bin/sqlite3-tool backup /data/data/com.example/databases/app.db /sdcard/app.db'
+su -c '/system/bin/sqlite3-tool biggest /sdcard/big.db 10'
+su -c '/system/bin/sqlite3-tool diskused /sdcard/big.db'
+su -c '/system/bin/sqlite3-tool compile-options WORKER'
 ```
 
 `backup` and `restore` go through SQLite's online backup API, not `cp`: safe on a live database, no write access needed to the source, owner and SELinux label preserved, verified with `integrity_check` before the destination is replaced - a failed backup leaves the previous copy untouched. `biggest` is a quick top-N list of the largest tables and indexes via `dbstat`. `diskused` prints SQLite's full space report (`.diskused`, which replaced the deprecated `sqlite3_analyzer`): payload, metadata, unused space, fragmentation and overflow pages per table and index. It opens the database read-only, so it is safe on a database an app is using.
@@ -101,10 +101,10 @@ Every command waits up to 5 s on a busy database, refuses files that are not SQL
 ### sqlite3-doctor
 
 ```sh
-sqlite3-doctor [--quick|--full] <database.db>
+su -c '/system/bin/sqlite3-doctor [--quick|--full] <database.db>'
 ```
 
-Header validation, WAL state, page and freelist analysis, `quick_check`, `integrity_check`, `foreign_key_check` and per-table row counts. A check that cannot run — locked or unreadable database — is reported with SQLite's error and counted as a problem rather than passed over. Row counts are skipped above 256 MB unless `--full`; `--quick` skips `integrity_check` and row counts. Exits 1 on problems, so it works in scripts.
+Header validation, WAL state (a non-empty `-wal` of a database in use is normal; only one above 4 MB is warned about), page and freelist analysis, `integrity_check`, `foreign_key_check` and per-table row counts. On a database with Android-only collations (`LOCALIZED`, `UNICODE`, `PHONEBOOK`) the check runs table by table and names the tables it could not check. A check that cannot run - locked or unreadable database - is reported with SQLite's error and counted as a problem rather than passed over. Row counts are skipped above 256 MB unless `--full`; `--quick` runs `quick_check` instead of `integrity_check` and skips row counts. Exits 1 on problems, so it works in scripts.
 
 ---
 
@@ -112,14 +112,14 @@ Header validation, WAL state, page and freelist analysis, `quick_check`, `integr
 
 `/system/bin/sqlite3` is a small shell script: it reads `/proc/meminfo`, picks an `mmap_size` (64 / 128 / 256 / 512 MB by RAM), passes it with `-mmap` and `busy_timeout` with the `.timeout` dot-command, and hands every argument to `sqlite3.real`. No SQL is run through `-cmd`: with `-bail` the SQLite shell exits right after the first SQL `-cmd` and never runs your statement. Everything else is a compile-time default. `SQLITE3_NO_WRAPPER=1` bypasses it.
 
-> PRAGMAs set at startup belong to the connection open at that moment. Running `.open` inside the shell creates a **new** connection with `busy_timeout` back to 0 (`mmap_size` is kept — `-mmap` is process-wide). Run `.timeout 5000` after `.open`, or pass the database on the command line.
+> PRAGMAs set at startup belong to the connection open at that moment. Running `.open` inside the shell creates a **new** connection with `busy_timeout` back to 0 (`mmap_size` is kept - `-mmap` is process-wide). Run `.timeout 5000` after `.open`, or pass the database on the command line.
 
 ## `.sqliterc-full`
 
 An annotated reference config is deployed to `/data/local/.sqliterc-full`: every tunable PRAGMA with notes on what it does and when it is unsafe, all commented out. The module rewrites it at every boot, so copy it before uncommenting anything and load your copy instead.
 
 ```sh
-sqlite3 -init /data/local/.sqliterc-full /path/to/database.db
+su -c '/system/bin/sqlite3 -init /data/local/.sqliterc-full /path/to/database.db'
 ```
 
 ---
@@ -132,9 +132,9 @@ sqlite3 -init /data/local/.sqliterc-full /path/to/database.db
 4. Verify:
 
 ```sh
-sqlite3 --version
-sqlite3-tool version
-sqlite3 :memory: "SELECT sqlite_compileoption_used('SECURE_DELETE');"   # 0
+su -c '/system/bin/sqlite3 --version'
+su -c '/system/bin/sqlite3-tool version'
+echo "SELECT sqlite_compileoption_used('SECURE_DELETE');" | su -c '/system/bin/sqlite3 :memory:'   # 0
 ```
 
 The installer stops if the package is incomplete or the shipped binary will not execute on your device, rather than installing something that fails later.
@@ -172,7 +172,7 @@ export ANDROID_NDK_HOME=/path/to/android-ndk
 
 Optional: a `SHA3SUMS` file next to the archives, one `<sha3-256>  <file name>` line per archive, with the hashes from the [download page](https://www.sqlite.org/download.html). When it is there, a missing or different hash stops the build.
 
-Key flags — the full list, with what each one does, is in the module's help page:
+Key flags - the full list, with what each one does, is in the module's help page:
 
 ```
 -O2 -march=armv8-a -fPIE -pie -fuse-ld=lld
@@ -187,16 +187,16 @@ Nothing is written to `android-module/` until the staged binaries pass every che
 
 - **Archives**: both come from the same SQLite check-in (`SQLITE_SOURCE_ID`), and match `SHA3SUMS` when that file is present.
 
-- **Compile options** read back out of the binary and checked against the flag list — missing, wrong-valued, and unwanted options (`SECURE_DELETE`, …) all fail the build.
+- **Compile options** read back out of the binary and checked against the flag list - missing, wrong-valued, and unwanted options (`SECURE_DELETE`, …) all fail the build.
 - **Platform flags** leave no trace in the option list, so it checks that the binary really imports `malloc_usable_size()`, `fdatasync()` and `localtime_r()`.
 - **ELF**, both binaries: AArch64, PIE, BIND_NOW, RELRO, stripped, 16 KB aligned segments, no libraries besides `libc.so`, `libm.so`, `libdl.so`.
 - **Functional test**: the same sources and SQLite flags built for the host and run through FTS5, FTS4, R-Tree, Geopoly, JSON, math, percentile, dbstat, double-quoted strings, `DELETE … LIMIT` and `sqldiff`.
 
-- **Module test suite**: `tests/sqlite3-module-test.sh` run against that host build through the module's own wrapper, `sqlite3-tool` and `sqlite3-doctor` (197 tests). Needs `--install DIR`, or `build.sh` inside the repository.
+- **Module test suite**: `tests/sqlite3-module-test.sh` run against that host build through the module's own wrapper, `sqlite3-tool` and `sqlite3-doctor` (238 tests). Needs `--install DIR`, or `build.sh` inside the repository.
 
 It then writes `SHA256SUMS` and `BUILDINFO` (SQLite source ID, NDK revision, API level, defines).
 
-Worth knowing before you edit the flag list: most SQLite options are tested with `#ifdef`, not by value, so `-DSQLITE_SECURE_DELETE=0` **enables** secure delete. If you don't want a feature, leave the flag out entirely — the verification step exists to catch exactly this.
+Worth knowing before you edit the flag list: most SQLite options are tested with `#ifdef`, not by value, so `-DSQLITE_SECURE_DELETE=0` **enables** secure delete. If you don't want a feature, leave the flag out entirely - the verification step exists to catch exactly this.
 
 ## Testing on the phone
 

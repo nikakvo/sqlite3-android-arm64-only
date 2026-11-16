@@ -1,9 +1,9 @@
 #!/system/bin/sh
-# sqlite3-tool — helper commands for SQLite on Android ARM64
+# sqlite3-tool - helper commands for SQLite on Android ARM64
 # Part of nikakvo/sqlite3-android-arm64-only
 # Usage: sqlite3-tool <command> [args...]
 
-VERSION="2.4"
+VERSION="2.5"
 
 # Overridable so the script can be tested against any sqlite3 build.
 SQLITE3="${SQLITE3_BIN:-/system/bin/sqlite3.real}"
@@ -15,7 +15,7 @@ SQLITE3="${SQLITE3_BIN:-/system/bin/sqlite3.real}"
 BUSY_MS="${SQLITE3_BUSY_MS:-5000}"
 
 # ── Colours ───────────────────────────────────────────────────────────────────
-# The old check called tput, which does not exist on Android — the test always
+# The old check called tput, which does not exist on Android - the test always
 # failed and colours were silently dead. TERM is what actually works here.
 case "${TERM:-dumb}" in
     dumb | unknown | '') COLOR=0 ;;
@@ -38,21 +38,24 @@ ok()   { printf "${G}OK:${N}    %s\n" "$*"; }
 info() { printf "${C}Info:${N}  %s\n" "$*"; }
 
 # ── SQLite helpers ────────────────────────────────────────────────────────────
-# sq <db> <sql...> — run SQL against a database with a busy timeout set.
+# sq <db> <sql...> - run SQL against a database with a busy timeout set.
+# Every call uses -init /dev/null: the user's sqliterc must not change the
+# output this script parses (".mode box" there made a good database fail
+# integrity, backup and info).
 sq() {
     _db="$1"
     shift
-    "$SQLITE3" -cmd ".timeout $BUSY_MS" \
+    "$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" \
                "$_db" "$@" 2>/dev/null
 }
 
-# sqw <db> <sql...> — for commands that change the database. SQLite's own
+# sqw <db> <sql...> - for commands that change the database. SQLite's own
 # error message ("database is locked", "disk I/O error", ...) stays visible;
 # sq hides it, which left a bare "VACUUM failed" with no reason.
 sqw() {
     _db="$1"
     shift
-    "$SQLITE3" -cmd ".timeout $BUSY_MS" \
+    "$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" \
                "$_db" "$@"
 }
 
@@ -67,15 +70,30 @@ qstr() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
 # with backslash escapes instead.
 qdot() { printf '"%s"' "$(printf '%s' "$1" | sed 's/[\\"]/\\&/g')"; }
 
-human() { # bytes -> human readable, integer math only
+# ── Sizes ─────────────────────────────────────────────────────────────────────
+# mksh, the Android shell, does 32-bit arithmetic: 3 GB is -1073741824 there,
+# so "[ $size -gt $limit ]" and "$((size / 1073741824))" went wrong for
+# databases over 2 GB. Byte counts are compared by their number of digits
+# first, and only numbers below 10^9 ever go through $(( )) or -lt/-gt.
+
+# over <bytes> <limit> - true if bytes > limit. limit must be below 10^9.
+over() {
+    [ "${#1}" -gt 9 ] && return 0
+    [ "$1" -gt "$2" ]
+}
+
+human() { # bytes -> human readable
     _b="$1"
     case "$_b" in
         '' | *[!0-9]*) printf '?' ; return ;;
     esac
-    if   [ "$_b" -lt 1024 ]; then printf '%s B' "$_b"
+    if [ "${#_b}" -gt 9 ]; then
+        # 1 GB and up: awk works in floating point, no 32-bit limit.
+        awk -v b="$_b" 'BEGIN { printf "%.1f GB", b / 1073741824 }'
+    elif [ "$_b" -lt 1024 ]; then printf '%s B' "$_b"
     elif [ "$_b" -lt 1048576 ]; then printf '%s KB' "$(( _b / 1024 ))"
     elif [ "$_b" -lt 1073741824 ]; then printf '%s MB' "$(( _b / 1048576 ))"
-    else printf '%s.%s GB' "$(( _b / 1073741824 ))" "$(( (_b % 1073741824) * 10 / 1073741824 ))"
+    else printf '1.0 GB'
     fi
 }
 
@@ -87,11 +105,99 @@ file_size() {
     esac
 }
 
+# ── Integrity checks and Android's collations ─────────────────────────────────
+# Android's own SQLite library adds the collations LOCALIZED, UNICODE and
+# PHONEBOOK, and many databases have indexes that use them (contacts2.db,
+# calllog.db, media and app databases). A standalone sqlite3 does not have
+# them, so a whole-database integrity_check or quick_check stops at once with
+# "no such collation sequence". Before, that made a good backup "fail its own
+# integrity check". The check is then run table by table: every table that
+# does not need such a collation is still checked, and the others are named.
+#
+# run_check <db> <integrity_check|quick_check>
+# Sets CHECK_STATE:
+#   ok       the whole database passed
+#   partial  every table that could be checked passed; CHECK_SKIP names the
+#            tables that need an Android collation (CHECK_DONE / CHECK_ALL count)
+#   fail     the check found problems (CHECK_OUT)
+#   error    the check could not run at all (CHECK_OUT has SQLite's error)
+NL='
+'
+run_check() {
+    _cdb="$1"; _cp="$2"
+    CHECK_SKIP=""; CHECK_DONE=0; CHECK_ALL=0
+    CHECK_OUT=$("$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" "$_cdb" "PRAGMA $_cp;" 2>&1)
+    _crc=$?
+    if [ "$_crc" -eq 0 ]; then
+        if [ "$CHECK_OUT" = "ok" ]; then CHECK_STATE=ok; else CHECK_STATE=fail; fi
+        return 0
+    fi
+    case "$CHECK_OUT" in
+        *"no such collation sequence"*) ;;
+        # The check started and found damage, then stopped on it: that is a
+        # result, not "could not run".
+        *"malformed"* | *"*** in database"*) CHECK_STATE=fail; return 0 ;;
+        *) CHECK_STATE=error; return 0 ;;
+    esac
+    # One sqlite3 run for all tables: SQL from stdin goes on after an error.
+    _cscript=$("$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" "$_cdb" \
+        "SELECT '.print @@ ' || name || char(10) || 'PRAGMA $_cp(' || quote(name) || ');' FROM sqlite_master WHERE type='table' AND sql NOT LIKE 'CREATE VIRTUAL%' ORDER BY name;" 2>/dev/null)
+    [ -n "$_cscript" ] || { CHECK_STATE=error; return 0; }
+    _cres=$(printf '%s\n' "$_cscript" | "$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" "$_cdb" 2>&1)
+    _ct=""; _cbad=""
+    while IFS= read -r _cl; do
+        case "$_cl" in
+            "@@ "*) _ct="${_cl#@@ }"; CHECK_ALL=$((CHECK_ALL + 1)) ;;
+            ok) CHECK_DONE=$((CHECK_DONE + 1)) ;;
+            *"no such collation sequence: "*) CHECK_SKIP="${CHECK_SKIP:+$CHECK_SKIP, }$_ct (${_cl##*: })" ;;
+            '') ;;
+            *) _cbad="$_cbad$_ct: $_cl$NL" ;;
+        esac
+    done << END_CHECK
+$_cres
+END_CHECK
+    if [ -n "$_cbad" ]; then
+        CHECK_STATE=fail; CHECK_OUT="$_cbad"
+    elif [ "$CHECK_DONE" -eq 0 ] && [ -z "$CHECK_SKIP" ]; then
+        CHECK_STATE=error
+    else
+        CHECK_STATE=partial
+    fi
+}
+
+# One line for a partial result.
+partial_msg() {
+    printf '%s passed for %s of %s tables; not checked, they need a collation only Android'"'"'s own SQLite has: %s' \
+        "$1" "$CHECK_DONE" "$CHECK_ALL" "$CHECK_SKIP"
+}
+
+# ── SELinux labels of -wal / -shm / -journal ─────────────────────────────────
+# When root opens a database that has no -shm/-wal yet (its app is not
+# running), SQLite creates them with root's SELinux label, not the app's
+# (e.g. privapp_data_file:s0 next to a database labelled s0:c512,c768). A
+# read-only connection does not remove them again. An app may then be refused
+# write access to its own -shm. Give them the label of the database itself.
+fix_sidecars() {
+    [ -d /sys/fs/selinux ] && [ -w /data/adb ] || return 0
+    for _sf in "$@"; do
+        [ -f "$_sf" ] || continue
+        [ -e "$_sf-wal" ] || [ -e "$_sf-shm" ] || [ -e "$_sf-journal" ] || continue
+        # stat -c %C prints the bare label (ls -Z pads it into a column, which
+        # broke the first version of this).
+        _sctx=$(stat -c %C "$_sf" 2>/dev/null)
+        case "$_sctx" in u:object_r:*) ;; *) continue ;; esac
+        for _ss in "$_sf-wal" "$_sf-shm" "$_sf-journal"; do
+            [ -e "$_ss" ] || continue
+            [ "$(stat -c %C "$_ss" 2>/dev/null)" = "$_sctx" ] || chcon "$_sctx" "$_ss" 2>/dev/null
+        done
+    done
+}
+
 # ── Usage ─────────────────────────────────────────────────────────────────────
 usage() {
 cat << EOF
 
-${W}sqlite3-tool v${VERSION}${N} — SQLite helper for Android ARM64
+${W}sqlite3-tool v${VERSION}${N} - SQLite helper for Android ARM64
 
 ${W}Usage:${N}
   sqlite3-tool <command> [database] [args]
@@ -111,7 +217,7 @@ ${W}Maintain:${N}
   ${G}vacuum${N}          <db>              VACUUM (defragment + shrink)
   ${G}analyze${N}         <db>              ANALYZE (update query planner stats)
   ${G}optimize${N}        <db>              PRAGMA optimize
-  ${G}wal-checkpoint${N}  <db>              PRAGMA wal_checkpoint(FULL)
+  ${G}wal-checkpoint${N}  <db>              Merge the WAL and shrink it to 0 bytes
 
 ${W}Move data:${N}
   ${G}backup${N}          <db> <dest>       Online backup (safe on a live database)
@@ -156,11 +262,11 @@ esac
 need_db() {
     [ -n "$DB" ] || { err "No database specified. Usage: sqlite3-tool $CMD <database>"; exit 1; }
     [ -f "$DB" ] || { err "File not found: $DB"; exit 1; }
-    [ -r "$DB" ] || { err "No read permission: $DB — try: su -c 'sqlite3-tool $CMD $DB'"; exit 1; }
+    [ -r "$DB" ] || { err "No read permission: $DB - try: su -c 'sqlite3-tool $CMD $DB'"; exit 1; }
     # Every query below hides SQLite's stderr, so a file that is not a database
     # used to produce empty fields instead of an error. A 0-byte file is fine:
     # SQLite treats it as a new, empty database.
-    if [ "$(file_size "$DB")" -gt 0 ] && [ "$(head -c 15 "$DB" 2>/dev/null)" != "SQLite format 3" ]; then
+    if [ "$(file_size "$DB")" != "0" ] && [ "$(head -c 15 "$DB" 2>/dev/null)" != "SQLite format 3" ]; then
         err "Not an SQLite 3 database (or it is encrypted): $DB"
         exit 1
     fi
@@ -174,21 +280,32 @@ need_writable() {
 cmd_info() {
     need_db
     printf "\n${W}[ %s ]${N}\n\n" "$DB"
-    info "SQLite version:  $("$SQLITE3" --version 2>/dev/null | cut -d' ' -f1)"
-    info "Journal mode:    $(sq "$DB" 'PRAGMA journal_mode;')"
-    info "Page size:       $(sq "$DB" 'PRAGMA page_size;') bytes"
-    info "Encoding:        $(sq "$DB" 'PRAGMA encoding;')"
-    info "Auto vacuum:     $(sq "$DB" 'PRAGMA auto_vacuum;')"
-    info "User version:    $(sq "$DB" 'PRAGMA user_version;')"
-    info "Foreign keys:    $(sq "$DB" 'PRAGMA foreign_keys;')"
+    # One sqlite3 process for every value (2.4 started ten).
+    _vals=$(sq "$DB" "SELECT sqlite_version(); PRAGMA journal_mode; PRAGMA page_size;
+PRAGMA encoding; PRAGMA auto_vacuum; PRAGMA user_version; PRAGMA foreign_keys;
+SELECT count(*) FROM sqlite_master WHERE type='table';
+SELECT count(*) FROM sqlite_master WHERE type='index';")
+    {
+        read -r _ver; read -r _jm; read -r _ps; read -r _enc; read -r _av
+        read -r _uv; read -r _fk; read -r _nt; read -r _ni
+    } << END_VALS
+$_vals
+END_VALS
+    info "SQLite version:  $_ver"
+    info "Journal mode:    $_jm"
+    info "Page size:       $_ps bytes"
+    info "Encoding:        $_enc"
+    info "Auto vacuum:     $_av"
+    info "User version:    $_uv"
+    info "Foreign keys:    $_fk"
     if [ -f "${DB}-wal" ]; then
         info "WAL file:        $(human "$(file_size "${DB}-wal")")"
     else
         info "WAL file:        none"
     fi
     printf "\n"
-    info "Tables:          $(sq "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table';")"
-    info "Indexes:         $(sq "$DB" "SELECT count(*) FROM sqlite_master WHERE type='index';")"
+    info "Tables:          $_nt"
+    info "Indexes:         $_ni"
     info "File size:       $(human "$(file_size "$DB")")"
     printf "\n"
 }
@@ -197,13 +314,33 @@ cmd_tables() {
     need_db
     info "Tables in: $DB"
     printf "\n"
-    sq "$DB" "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;" |
-    while IFS= read -r t; do
-        [ -n "$t" ] || continue
-        COUNT=$(sq "$DB" "SELECT count(*) FROM $(qident "$t");")
-        printf "  %-40s %s rows\n" "$t" "${COUNT:-?}"
+    row_counts | while IFS= read -r line; do
+        printf "  %-40s %s rows\n" "${line#*"|"}" "${line%%"|"*}"
     done
     printf "\n"
+}
+
+# row_counts - print "count|name" for every table of $DB, sorted by name.
+# Two sqlite3 processes for any number of tables: the first builds one
+# UNION ALL query over all of them, the second runs it (2.4 started one
+# process per table). The caller splits each line at its first "|" (quoted
+# there: a bare | is alternation in mksh), so a "|" in a table name is kept. If the combined query fails (more than 500 tables, or a
+# virtual table whose module this build does not have), fall back to one query
+# per table, so every other table is still counted and a failed one shows "?".
+row_counts() {
+    _u=$(sq "$DB" "SELECT group_concat('SELECT count(*), ' || quote(name) || ' FROM \"' || replace(name, '\"', '\"\"') || '\"', ' UNION ALL ') FROM (SELECT name FROM sqlite_master WHERE type='table' ORDER BY name);")
+    _c=""
+    [ -n "$_u" ] && _c=$(sq "$DB" "$_u;")
+    if [ -n "$_c" ]; then
+        printf '%s\n' "$_c"
+        return 0
+    fi
+    sq "$DB" "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;" |
+    while IFS= read -r _t; do
+        [ -n "$_t" ] || continue
+        _n=$(sq "$DB" "SELECT count(*) FROM $(qident "$_t");")
+        printf '%s|%s\n' "${_n:-?}" "$_t"
+    done
 }
 
 cmd_indexes() {
@@ -264,7 +401,7 @@ cmd_biggest() {
     # bytes, pageno = page count) instead of one row per page.
     OUT=$(sq "$DB" "SELECT name, pgsize, pageno FROM dbstat WHERE aggregate=TRUE ORDER BY pgsize DESC LIMIT $LIMIT;")
     if [ -z "$OUT" ]; then
-        err "dbstat is unavailable — this sqlite3 was built without SQLITE_ENABLE_DBSTAT_VTAB"
+        err "dbstat is unavailable - this sqlite3 was built without SQLITE_ENABLE_DBSTAT_VTAB"
         exit 1
     fi
     printf '%s\n' "$OUT" | while IFS='|' read -r name bytes pages; do
@@ -285,7 +422,7 @@ cmd_diskused() {
     case "$SCHEMA" in
         '' | *[!A-Za-z0-9_]*) err "Invalid schema name: $SCHEMA"; exit 1 ;;
     esac
-    OUT=$("$SQLITE3" -readonly -cmd ".timeout $BUSY_MS" "$DB" ".diskused $SCHEMA" 2>&1)
+    OUT=$("$SQLITE3" -init /dev/null -readonly -cmd ".timeout $BUSY_MS" "$DB" ".diskused $SCHEMA" 2>&1)
     RC=$?
     case "$OUT" in
         *"Page size in bytes"*) ;;
@@ -304,14 +441,18 @@ cmd_diskused() {
 cmd_integrity() {
     need_db
     info "Running integrity_check on: $DB"
-    RESULT=$(sq "$DB" 'PRAGMA integrity_check;')
-    if [ "$RESULT" = "ok" ]; then
-        ok "integrity_check passed"
-    else
-        err "integrity_check FAILED:"
-        printf '%s\n' "$RESULT"
-        exit 1
-    fi
+    run_check "$DB" integrity_check
+    case "$CHECK_STATE" in
+        ok) ok "integrity_check passed" ;;
+        partial) warn "$(partial_msg integrity_check)" ;;
+        fail)
+            err "integrity_check FAILED:"
+            printf '%s\n' "$CHECK_OUT"
+            exit 1 ;;
+        *)
+            err "integrity_check could not run: $CHECK_OUT"
+            exit 1 ;;
+    esac
 }
 
 cmd_vacuum() {
@@ -321,7 +462,7 @@ cmd_vacuum() {
     info "Running VACUUM on: $DB (was $(human "$BEFORE"))"
     sqw "$DB" "VACUUM;" || { err "VACUUM failed"; exit 1; }
     AFTER=$(file_size "$DB")
-    ok "VACUUM complete — $(human "$BEFORE") -> $(human "$AFTER")"
+    ok "VACUUM complete - $(human "$BEFORE") -> $(human "$AFTER")"
 }
 
 cmd_analyze() {
@@ -345,21 +486,27 @@ cmd_wal_checkpoint() {
     need_db
     need_writable
     info "Running WAL checkpoint on: $DB"
-    RESULT=$(sqw "$DB" 'PRAGMA wal_checkpoint(FULL);') || { err "wal_checkpoint failed"; exit 1; }
+    # TRUNCATE (2.4 used FULL): copies every frame back like FULL and then cuts
+    # the -wal file to 0 bytes, also while an app keeps the database open, as
+    # long as no read is in progress at that moment.
+    RESULT=$(sqw "$DB" 'PRAGMA wal_checkpoint(TRUNCATE);') || { err "wal_checkpoint failed"; exit 1; }
     # Result is busy|wal_frames|checkpointed_frames. The old version printed
     # "OK" even when busy=1, i.e. when the checkpoint could not finish.
     # The "|" must be quoted: an unquoted | is pattern alternation in mksh.
     CP_BUSY="${RESULT%%"|"*}"; _rest="${RESULT#*"|"}"
     CP_LOG="${_rest%%"|"*}";   CP_DONE="${_rest#*"|"}"
     if [ "$CP_LOG" = "-1" ]; then
-        info "Not in WAL mode (journal_mode is $(sq "$DB" 'PRAGMA journal_mode;')) — nothing to checkpoint"
+        info "Not in WAL mode (journal_mode is $(sq "$DB" 'PRAGMA journal_mode;')) - nothing to checkpoint"
     elif [ "$CP_BUSY" = "1" ]; then
-        warn "Checkpoint incomplete: $CP_DONE of $CP_LOG frames — another connection is using the database"
+        warn "Checkpoint incomplete: $CP_DONE of $CP_LOG frames - another connection is using the database"
+    elif [ "$CP_LOG" = "0" ]; then
+        # After a successful TRUNCATE the WAL is empty, so SQLite reports 0|0.
+        ok "Checkpoint complete - WAL merged into the database and truncated"
     else
-        ok "Checkpointed $CP_DONE of $CP_LOG frames"
+        ok "Checkpoint complete - $CP_DONE of $CP_LOG frames merged"
     fi
     if [ -f "${DB}-wal" ]; then
-        info "WAL file: $(human "$(file_size "${DB}-wal")") (kept while another connection has the database open)"
+        info "WAL file: $(human "$(file_size "${DB}-wal")")"
     fi
 }
 
@@ -387,25 +534,34 @@ cmd_backup() {
     # the destination and only replace the destination once the copy has
     # passed integrity_check.
     TMP="${DEST}.sqlite3-tool-$$.tmp"
-    trap 'rm -f "$TMP" "${TMP}-journal" "${TMP}-wal" "${TMP}-shm"' EXIT
-    trap 'exit 130' INT TERM
 
-    if ! "$SQLITE3" -cmd ".timeout $BUSY_MS" \
+    if ! "$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" \
                     "$DB" ".backup $(qdot "$TMP")"; then
-        err "Backup failed — $DEST was not touched"
+        err "Backup failed - $DEST was not touched"
         exit 1
     fi
 
     [ -f "$TMP" ] || { err "Backup produced no file"; exit 1; }
-    VERIFY=$(sq "$TMP" 'PRAGMA integrity_check;')
-    if [ "$VERIFY" != "ok" ]; then
-        err "Backup failed its own integrity check — $DEST was not touched"
-        exit 1
-    fi
+    run_check "$TMP" integrity_check
+    case "$CHECK_STATE" in
+        ok | partial) ;;
+        fail)
+            err "Backup failed its own integrity check - $DEST was not touched:"
+            printf '%s\n' "$CHECK_OUT" | head -n 10
+            exit 1 ;;
+        *)
+            err "The backup could not be checked - $DEST was not touched: $CHECK_OUT"
+            exit 1 ;;
+    esac
 
     rm -f "${DEST}-wal" "${DEST}-shm" 2>/dev/null
     mv -f "$TMP" "$DEST" || { err "Could not move the backup into place: $DEST"; exit 1; }
-    ok "Backup complete and verified -> $DEST ($(human "$(file_size "$DEST")"))"
+    if [ "$CHECK_STATE" = "ok" ]; then
+        ok "Backup complete and verified -> $DEST ($(human "$(file_size "$DEST")"))"
+    else
+        ok "Backup complete -> $DEST ($(human "$(file_size "$DEST")"))"
+        warn "$(partial_msg "Verification (integrity_check)")"
+    fi
 }
 
 cmd_restore() {
@@ -422,37 +578,42 @@ cmd_restore() {
 
     info "Restoring: $SRC -> $DEST"
 
-    INTEGRITY=$(sq "$SRC" 'PRAGMA integrity_check;')
-    if [ "$INTEGRITY" != "ok" ]; then
-        err "Source backup failed integrity check — aborting restore"
-        exit 1
-    fi
+    run_check "$SRC" integrity_check
+    case "$CHECK_STATE" in
+        ok) ;;
+        partial) warn "Backup: $(partial_msg integrity_check)" ;;
+        fail) err "Source backup failed integrity check - aborting restore"; exit 1 ;;
+        *) err "Source backup could not be checked - aborting restore: $CHECK_OUT"; exit 1 ;;
+    esac
 
     # The old version did cp and then deleted -wal/-shm next to the
     # destination. Deleting -shm under an app that still has the database open
     # corrupts it. .restore writes the pages through SQLite instead: it takes
     # the proper locks, handles WAL itself, and keeps the file's owner and
     # SELinux label, so an app database stays openable by its app.
-    if ! "$SQLITE3" -cmd ".timeout $BUSY_MS" \
+    if ! "$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" \
                     "$DEST" ".restore $(qdot "$SRC")"; then
         err "Restore failed (is the database busy? stop the app that owns it)"
         exit 1
     fi
 
-    VERIFY=$(sq "$DEST" 'PRAGMA integrity_check;')
-    if [ "$VERIFY" != "ok" ]; then
-        err "Restored database failed integrity_check:"
-        printf '%s\n' "$VERIFY"
-        exit 1
-    fi
-
-    ok "Restore complete and verified -> $DEST"
+    run_check "$DEST" integrity_check
+    case "$CHECK_STATE" in
+        ok) ok "Restore complete and verified -> $DEST" ;;
+        partial)
+            ok "Restore complete -> $DEST"
+            warn "$(partial_msg "Verification (integrity_check)")" ;;
+        *)
+            err "Restored database failed integrity_check:"
+            printf '%s\n' "$CHECK_OUT"
+            exit 1 ;;
+    esac
 }
 
 # ── Build info ────────────────────────────────────────────────────────────────
 cmd_compile_options() {
     FILTER="$DB"
-    OUT=$("$SQLITE3" ":memory:" "PRAGMA compile_options;" 2>/dev/null)
+    OUT=$("$SQLITE3" -init /dev/null ":memory:" "PRAGMA compile_options;" 2>/dev/null)
     if [ -n "$FILTER" ]; then
         printf '%s\n' "$OUT" | grep -i -- "$FILTER" || { err "No compile option matches: $FILTER"; exit 1; }
     else
@@ -479,6 +640,22 @@ cmd_doctor() {
 }
 
 # ── Dispatch ──────────────────────────────────────────────────────────────────
+# On every exit: remove a backup's temporary file if it is still there, and
+# give -wal/-shm/-journal files next to the databases used the label of their
+# database (see fix_sidecars).
+TMP=""
+SRC=""
+DEST=""
+on_exit() {
+    [ -n "$TMP" ] && rm -f "$TMP" "${TMP}-journal" "${TMP}-wal" "${TMP}-shm"
+    case "$CMD" in
+        compile-options | version) ;;
+        *) fix_sidecars "$DB" ${DEST:+"$DEST"} ;;
+    esac
+}
+trap on_exit EXIT
+trap 'exit 130' INT TERM
+
 case "$CMD" in
     info)            cmd_info ;;
     tables)          cmd_tables ;;

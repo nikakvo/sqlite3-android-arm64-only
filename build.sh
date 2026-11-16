@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build.sh — SQLite3 ARM64 Android module builder
+# build.sh - SQLite3 ARM64 Android module builder
 # Tears Burn / nikakvo
 #
 # Usage:
@@ -114,7 +114,7 @@ on_exit() {
     local rc=$?
     [ "$BUILD_STARTED" = "1" ] || return 0
     if [ "$rc" -ne 0 ]; then
-        err "build failed — intermediate files kept in $BUILD_DIR"
+        err "build failed - intermediate files kept in $BUILD_DIR"
     elif [ "$KEEP_BUILD" = "1" ]; then
         info "Build directory kept: $BUILD_DIR"
     else
@@ -217,7 +217,7 @@ AMALG_ALL=( "$WORK_DIR"/sqlite-amalgamation-*.zip )
 AMALG_ZIP=$(printf '%s\n' "${AMALG_ALL[@]}" | sort -V | tail -n 1)
 
 # Release archives carry the packed version XYYZZPP: 3530400 -> 3.53.4.
-# Take the number from the exact name pattern — stripping every non-digit broke
+# Take the number from the exact name pattern - stripping every non-digit broke
 # on copies such as "sqlite-amalgamation-3530400 (1).zip".
 AMALG_NAME=$(basename "$AMALG_ZIP")
 [[ "$AMALG_NAME" =~ ^sqlite-amalgamation-([0-9]{7})\.zip$ ]] \
@@ -304,7 +304,7 @@ if [ "$WITH_UPDATE_LIMIT" = "1" ]; then
            && CC="$HOST_CC" "$SRC_TOP/configure" --update-limit > configure.log 2>&1 \
            && make sqlite3.c shell.c > make.log 2>&1 ); then
         tail -n 20 "$BUILD_DIR/gen/configure.log" "$BUILD_DIR/gen/make.log" 2>/dev/null >&2 || true
-        die "amalgamation generation failed — logs in $BUILD_DIR/gen/"
+        die "amalgamation generation failed - logs in $BUILD_DIR/gen/"
     fi
     SQL_DIR="$BUILD_DIR/gen"
     ok "sqlite3.c regenerated"
@@ -336,7 +336,7 @@ info "Source ID:    $SOURCE_ID"
 #
 #  1. Many SQLite options are tested with #ifdef, NOT by value. Writing
 #     -DSQLITE_SECURE_DELETE=0 DEFINES the macro and therefore ENABLES secure
-#     delete — the exact opposite of the intent. If you don't want a feature,
+#     delete - the exact opposite of the intent. If you don't want a feature,
 #     omit the flag entirely.
 #
 #  2. Some flags no longer exist. SQLITE_ENABLE_JSON1 and
@@ -361,19 +361,19 @@ CORE_FLAGS=(
     # DQS=3 keeps double-quoted string literals working, as in a default
     # SQLite build. DQS=0 is stricter, but then an app database whose views or
     # triggers contain "text" rejects INSERT into the affected tables, ALTER
-    # TABLE and queries on those views — this tool exists to open other apps'
+    # TABLE and queries on those views - this tool exists to open other apps'
     # databases, so compatibility wins.
     -DSQLITE_DQS=3
     -DSQLITE_LIKE_DOESNT_MATCH_BLOBS
     -DSQLITE_HAVE_ISNAN
-    # NOTE: SQLITE_SECURE_DELETE is deliberately absent — see rule 1.
+    # NOTE: SQLITE_SECURE_DELETE is deliberately absent - see rule 1.
 )
 
 # The amalgamation has no configure step, so it cannot detect what bionic
 # offers. These tell it; each one is checked against the binary's imports.
 PLATFORM_FLAGS=(
     # malloc_usable_size() instead of an 8-byte size header on every
-    # allocation. Needs both macros — earlier builds set only the second one,
+    # allocation. Needs both macros - earlier builds set only the second one,
     # so it did nothing.
     -DHAVE_MALLOC_H=1
     -DHAVE_MALLOC_USABLE_SIZE=1
@@ -383,7 +383,7 @@ PLATFORM_FLAGS=(
     -DHAVE_FDATASYNC=1
     # Thread-safe localtime_r() instead of localtime() under a global mutex.
     -DHAVE_LOCALTIME_R=1
-    # NOTE: HAVE_USLEEP=1 removed — SQLite sleeps with nanosleep() unless
+    # NOTE: HAVE_USLEEP=1 removed - SQLite sleeps with nanosleep() unless
     # HAVE_NANOSLEEP=0, so it never reached usleep().
 )
 # The libc function each platform flag must make the binary call.
@@ -453,7 +453,7 @@ FEATURE_FLAGS=(
 # .scanstats, but you pay for it on every query whether you use it or not.
 if [ "$WITH_SCANSTATUS" = "1" ]; then
     FEATURE_FLAGS+=( -DSQLITE_ENABLE_STMT_SCANSTATUS )
-    warn "STMT_SCANSTATUS enabled — .scanstats works, every query pays for it"
+    warn "STMT_SCANSTATUS enabled - .scanstats works, every query pays for it"
 fi
 if [ "$WITH_UPDATE_LIMIT" = "1" ]; then
     FEATURE_FLAGS+=( -DSQLITE_ENABLE_UPDATE_DELETE_LIMIT )
@@ -510,7 +510,7 @@ COMPILE_FAILED=0
 for p in "${PIDS[@]}"; do wait "$p" || COMPILE_FAILED=1; done
 for o in sqlite3.o shell.o sqldiff.o; do
     if [ -s "$o.log" ]; then
-        warn "$o: $(wc -l < "$o.log" | tr -d ' ') line(s) of compiler output — see below"
+        warn "$o: $(wc -l < "$o.log" | tr -d ' ') line(s) of compiler output - see below"
         sed 's/^/        /' "$o.log" | tail -n 40
     fi
 done
@@ -519,15 +519,15 @@ ok "sqlite3.o, shell.o, sqldiff.o"
 
 step "Linking"
 "$CC" "${LDFLAGS[@]}" -o "$BUILD_DIR/stage/sqlite3.real" sqlite3.o shell.o "${LIBS[@]}"
-ok "sqlite3.real — $(du -h "$BUILD_DIR/stage/sqlite3.real" | cut -f1)"
+ok "sqlite3.real - $(du -h "$BUILD_DIR/stage/sqlite3.real" | cut -f1)"
 "$CC" "${LDFLAGS[@]}" -o "$BUILD_DIR/stage/sqldiff" sqldiff.o sqlite3.o "${LIBS[@]}"
-ok "sqldiff — $(du -h "$BUILD_DIR/stage/sqldiff" | cut -f1)"
+ok "sqldiff - $(du -h "$BUILD_DIR/stage/sqldiff" | cut -f1)"
 cd "$WORK_DIR"
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  VERIFICATION
 #  Runs on the staged binaries. Nothing reaches android-module/ unless all of
-#  it passes — the old script verified after writing there, so a rejected
+#  it passes - the old script verified after writing there, so a rejected
 #  build was still sitting in the output directory.
 # ══════════════════════════════════════════════════════════════════════════════
 step "Verifying compile options"
@@ -545,7 +545,7 @@ has_prefix() { case "$OPTS" in *"${NL}$1"*) return 0 ;; esac; return 1; }
 
 # The expected list is derived from the flag arrays, so a flag cannot be added
 # above and forgotten here. ctime.c reports some options with their value
-# (DQS=3) and some without (USE_URI), so both forms are accepted — but a
+# (DQS=3) and some without (USE_URI), so both forms are accepted - but a
 # different value is an error.
 CHECKED=0
 for f in "${DEFS[@]}"; do
@@ -617,7 +617,7 @@ elf_check "$BUILD_DIR/stage/sqlite3.real"
 elf_check "$BUILD_DIR/stage/sqldiff"
 
 # Platform flags leave no trace in compile_options, but they change which libc
-# functions are called — so check the imports.
+# functions are called - so check the imports.
 SYMS="${NL}$("$READELF" --dyn-syms -W "$BIN" | awk '$7 == "UND" {sub(/@.*/, "", $8); print $8}')${NL}"
 for f in "${PLATFORM_FLAGS[@]}"; do
     name="${f#-D}"; name="${name%%=*}"
@@ -640,7 +640,7 @@ if [ "$SKIP_HOST_TEST" = "1" ] || [ -z "$HOST_CC" ]; then
     if [ "$SKIP_HOST_TEST" = "1" ]; then
         warn "host functional test skipped (SKIP_HOST_TEST=1)"
     else
-        warn "no host C compiler — functional test skipped (set HOST_CC, or SKIP_HOST_TEST=1)"
+        warn "no host C compiler - functional test skipped (set HOST_CC, or SKIP_HOST_TEST=1)"
     fi
     [ "$WITH_UPDATE_LIMIT" = "1" ] && warn "UPDATE/DELETE LIMIT is therefore NOT verified"
 else
@@ -666,7 +666,7 @@ else
         got=$(printf '%s\n' "$3" | "$H/sqlite3" -batch :memory: 2>&1) || true
         [ "$got" = "$2" ] || fail "$1: expected [$2], got [$got]"
     }
-    t_err() { # <description> <sql> — the statement must be rejected
+    t_err() { # <description> <sql> - the statement must be rejected
         TESTS=$((TESTS + 1))
         if printf '%s\n' "$2" | "$H/sqlite3" -batch :memory: >/dev/null 2>&1; then
             fail "$1: statement was accepted"
@@ -750,7 +750,7 @@ else
         fi
     done
     if [ -z "$SUITE" ]; then
-        warn "module test suite skipped — put sqlite3-module-test.sh, sqlite3, sqlite3-tool and sqlite3-doctor next to build.sh"
+        warn "module test suite skipped - put sqlite3-module-test.sh, sqlite3, sqlite3-tool and sqlite3-doctor next to build.sh"
     else
         step "Module test suite (host build + module scripts)"
         TB="$H/bin"
@@ -767,12 +767,12 @@ else
             ok "$(grep -E '^  [0-9]+ passed' "$H/suite.log" | sed 's/^ *//')"
         else
             grep -A 8 '\[FAIL\]' "$H/suite.log" | sed 's/^/        /' | head -n 60 >&2 || true
-            fail "module test suite: $(grep -E '^  [0-9]+ passed' "$H/suite.log" | sed 's/^ *//') — full log: $H/suite.log"
+            fail "module test suite: $(grep -E '^  [0-9]+ passed' "$H/suite.log" | sed 's/^ *//') - full log: $H/suite.log"
         fi
     fi
 fi
 
-[ "$FAILED" -eq 0 ] || die "Verification failed — nothing was written to $OUT_DIR"
+[ "$FAILED" -eq 0 ] || die "Verification failed - nothing was written to $OUT_DIR"
 
 # ── Publish ───────────────────────────────────────────────────────────────────
 step "Writing android-module/"
@@ -825,12 +825,12 @@ if [ -n "$INSTALL_DIR" ]; then
     CUR_BASE="${CUR_BASE%%-*}"
 
     if [ -z "$CUR_VER" ]; then
-        warn "module.prop has no version= line — version not updated"
+        warn "module.prop has no version= line - version not updated"
     elif [ "$CUR_BASE" = "$SQLITE_VERSION" ]; then
         # The old script reset version= to v$SQLITE_VERSION and bumped
         # versionCode on every run: v3.53.4-r2 became v3.53.4 and running
         # --install twice skipped a versionCode.
-        info "module.prop stays at $CUR_VER — same SQLite version."
+        info "module.prop stays at $CUR_VER - same SQLite version."
         info "If this rebuild is a release, bump the -rN revision and versionCode yourself."
     else
         OLD_CODE=$(sed -n 's/^versionCode=//p' "$PROP" | sed -n '1p')
@@ -889,7 +889,7 @@ if [ -n "$INSTALL_DIR" ]; then
             *"${NL}module.prop${NL}"*) ;;
             *) die "module.prop is not at the root of $ZIP_OUT" ;;
         esac
-        ok "$(basename "$ZIP_OUT") — $(du -h "$ZIP_OUT" | cut -f1), $("${SHA256[@]}" "$ZIP_OUT" | cut -c1-16)…"
+        ok "$(basename "$ZIP_OUT") - $(du -h "$ZIP_OUT" | cut -f1), $("${SHA256[@]}" "$ZIP_OUT" | cut -c1-16)…"
     fi
 fi
 

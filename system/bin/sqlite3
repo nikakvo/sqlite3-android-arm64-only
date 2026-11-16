@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# sqlite3 — thin wrapper around sqlite3.real
+# sqlite3 - thin wrapper around sqlite3.real
 # Part of nikakvo/sqlite3-android-arm64-only
 #
 # The previous version injected nine PRAGMAs. Five of them merely repeated a
@@ -12,8 +12,8 @@
 #   PRAGMA mmap_size=...       ->  -DSQLITE_DEFAULT_MMAP_SIZE=268435456
 #
 # Only two things are worth doing here:
-#   busy_timeout — has no compile-time equivalent
-#   mmap_size    — scaled to the device rather than a fixed compiled value
+#   busy_timeout - has no compile-time equivalent
+#   mmap_size    - scaled to the device rather than a fixed compiled value
 #
 # Both are set WITHOUT running SQL through -cmd. The sqlite3 shell (3.53.x and
 # trunk) ends the program right after the first SQL -cmd whenever -bail is
@@ -34,7 +34,7 @@ REAL="${0%/*}/sqlite3.real"
 [ -x "$REAL" ] || REAL="/system/bin/sqlite3.real"
 
 if [ ! -x "$REAL" ]; then
-    echo "sqlite3: sqlite3.real not found — is the module mounted?" >&2
+    echo "sqlite3: sqlite3.real not found - is the module mounted?" >&2
     exit 127
 fi
 
@@ -42,20 +42,72 @@ if [ "${SQLITE3_NO_WRAPPER:-0}" = "1" ]; then
     exec "$REAL" "$@"
 fi
 
-# Adaptive memory-map size. One awk call; everything else is shell builtins.
-RAM_KB=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null)
+# Adaptive memory-map size. Shell builtins only: a script that calls sqlite3
+# in a loop no longer pays for one awk process per call.
+RAM_KB=""
+if [ -r /proc/meminfo ]; then
+    while read -r _k _v _; do
+        [ "$_k" = "MemTotal:" ] && { RAM_KB="$_v"; break; }
+    done < /proc/meminfo
+fi
 case "$RAM_KB" in
     '' | *[!0-9]*) RAM_KB=0 ;;
 esac
 
 if   [ "$RAM_KB" -lt 3145728 ];  then MMAP=67108864     # < 3 GB  ->  64 MB
-elif [ "$RAM_KB" -lt 6291456 ];  then MMAP=134217728    # 3–6 GB  -> 128 MB
-elif [ "$RAM_KB" -lt 12582912 ]; then MMAP=268435456    # 6–12 GB -> 256 MB
+elif [ "$RAM_KB" -lt 6291456 ];  then MMAP=134217728    # 3-6 GB  -> 128 MB
+elif [ "$RAM_KB" -lt 12582912 ]; then MMAP=268435456    # 6-12 GB -> 256 MB
 else                                  MMAP=536870912    # > 12 GB -> 512 MB
 fi
 
+# SELinux labels. When root opens an app database that has no -shm/-wal yet
+# (its app is not running), SQLite creates them with root's label instead of
+# the app's, and a read-only connection leaves them there. Some Android builds
+# then refuse the app write access to its own -shm. So as root, with SELinux,
+# when an argument is an existing database file whose -shm does not exist yet
+# (the only case where this run can create one), run sqlite3 as a child and
+# afterwards give any -wal/-shm/-journal next to it the label of the database.
+# Everything else (not root, :memory:, a new file, a database whose app has it
+# open) still goes through exec and costs nothing extra.
+# Builtins only on the way: Android's mksh has no printf builtin, and the
+# label tools are called by full path, so this also works with no PATH.
+DBS=""
+if [ -d /sys/fs/selinux ] && [ -w /data/adb ]; then
+    for _a in "$@"; do
+        case "$_a" in
+            -*) continue ;;
+            file:*) _a="${_a#file:}"; _a="${_a%%\?*}" ;;
+        esac
+        [ -f "$_a" ] && [ ! -e "$_a-shm" ] && DBS="$DBS$_a
+"
+    done
+fi
+
 # A later -mmap from the user overrides this one.
-exec "$REAL" \
-    -mmap "$MMAP" \
-    -cmd ".timeout 5000" \
-    "$@"
+if [ -z "$DBS" ]; then
+    exec "$REAL" \
+        -mmap "$MMAP" \
+        -cmd ".timeout 5000" \
+        "$@"
+fi
+
+# Ctrl-C is for sqlite3 (it cancels the running statement); the wrapper only
+# has to live on to fix the labels. A trap with a command, not '', so the
+# child does not inherit SIGINT as ignored.
+trap ':' INT
+"$REAL" -mmap "$MMAP" -cmd ".timeout 5000" "$@"
+RC=$?
+while IFS= read -r _f; do
+    [ -n "$_f" ] || continue
+    [ -e "$_f-wal" ] || [ -e "$_f-shm" ] || [ -e "$_f-journal" ] || continue
+    # stat -c %C prints the bare label (ls -Z pads it into a column).
+    _ctx=$(/system/bin/stat -c %C "$_f" 2>/dev/null)
+    case "$_ctx" in u:object_r:*) ;; *) continue ;; esac
+    for _s in "$_f-wal" "$_f-shm" "$_f-journal"; do
+        [ -e "$_s" ] || continue
+        [ "$(/system/bin/stat -c %C "$_s" 2>/dev/null)" = "$_ctx" ] || /system/bin/chcon "$_ctx" "$_s" 2>/dev/null
+    done
+done << END_DBS
+$DBS
+END_DBS
+exit "$RC"

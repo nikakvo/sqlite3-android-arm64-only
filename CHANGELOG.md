@@ -1,5 +1,28 @@
 # Changelog
 
+## SQLite 3.54.1 - r2
+
+### Fixed
+- **`sqlite3-doctor` called every database in use unhealthy.** It counted any non-empty `-wal` file as "Unmerged WAL file" and exited 1. While an app has its database open, SQLite keeps the WAL after a checkpoint and writes it again from the start, so on Android almost every app and system database has one, and the suggested `wal-checkpoint` could not clear it. The WAL size is now shown as information; only a WAL above 4 MB (far past the normal auto-checkpoint size) is warned about, and it is not counted as an issue.
+- **A personal `.sqliterc` broke `sqlite3-tool` and `sqlite3-doctor`.** Both read the output of `sqlite3`, and the shell loaded the user's `sqliterc` for them too: with `.mode box` or `.headers on` in it, a good database "FAILED" `integrity`, `backup` refused to finish and `info` printed table borders in every field. The tools now ignore it (`-init /dev/null`). The `sqlite3` command itself still reads your `sqliterc`, as before.
+- **Databases with Android's own collations** (`LOCALIZED`, `UNICODE`, `PHONEBOOK`, used by `contacts2.db`, the call log and many app databases) could not be checked: a standalone `sqlite3` does not have those collations, so `integrity_check` stopped at once. `sqlite3-tool backup` then refused a good copy ("Backup failed its own integrity check"), and `integrity`, `restore` and `sqlite3-doctor` reported a failure. They now check such a database table by table, name the tables that need an Android collation, and treat that as "not checked", not as damage. Real damage in any other table is still found.
+- **Databases over 2 GB** got a wrong (negative) size in `sqlite3-doctor` and `sqlite3-tool`, and the doctor counted rows on them as if they were small: the Android shell (mksh) calculates with 32-bit numbers. Sizes are now handled without that limit.
+- **SELinux labels of `-wal` / `-shm`.** When root opens a database whose app is not running, SQLite creates `-wal` and `-shm` with root's label instead of the app's, and a read-only open (`-readonly`, `sqlite3-tool diskused`) leaves them there. `sqlite3` now gives the files it created the label of the database when it finishes, and `sqlite3-tool` and `sqlite3-doctor` also fix ones left with a wrong label earlier.
+- **`sqlite3-doctor` reported foreign key violations on every `contacts2.db`.** Android's contacts schema has a foreign key to a table that does not exist (`REFERENCES mimetype`, the table is `mimetypes`), so every row of `data` was listed and the doctor exited 1. A foreign key to a missing table is now shown as a schema quirk and not counted; real violations are listed per table with a count instead of one line per row.
+- Uninstall did not remove interrupted backup temp files from `/sdcard`: KernelSU and SukiSU run the uninstall script before `/sdcard` is available. It now waits in the background until the phone has booted, then cleans up.
+- The help page said uninstall clears temp files in `/data/local/tmp`; it clears interrupted backup temp files in `/sdcard` and `/sdcard/Download`, which is where they can be.
+
+### Changed
+- `sqlite3-tool wal-checkpoint` uses `TRUNCATE` instead of `FULL`: it merges the WAL as before and then cuts the `-wal` file to 0 bytes, also while an app keeps the database open (as long as no read is running at that moment).
+- `sqlite3-doctor` runs `integrity_check` only; it already includes everything `quick_check` does, so the database is read once instead of twice. `--quick` runs `quick_check` as before.
+- Fewer processes: `sqlite3-tool info` and the doctor's database info now start `sqlite3` once instead of about ten times, and row counts (`sqlite3-tool tables`, doctor) take two `sqlite3` runs for any number of tables instead of one per table.
+- The `sqlite3` wrapper reads the RAM size with shell builtins instead of starting `awk` on every call, which helps scripts that call `sqlite3` in a loop. It also no longer falls back to the smallest `mmap` size when `awk` is not on `PATH`.
+- The module description in the manager now follows `module.prop`; the boot script no longer replaces it with a built-in copy.
+- Help page: numbered contents at the top that jump to each section and a back-to-top arrow, instead of the tab bar; every command is written as `su -c '...'` with full paths (README too).
+- sqlite3-tool v2.5, sqlite3-doctor v2.4, test suite v1.2 (41 more tests for the above).
+
+---
+
 ## SQLite 3.54.1
 
 ### Changed
@@ -30,7 +53,7 @@
 
 ---
 
-## SQLite 3.53.4 — r4
+## SQLite 3.53.4 - r4
 
 ### Fixed
 - **`sqlite3 -bail` silently did nothing.** The wrapper set `busy_timeout` and `mmap_size` with SQL through `-cmd`, and the SQLite shell ends the program right after the first SQL `-cmd` whenever `-bail` is given. `sqlite3 -bail app.db "DELETE …"` exited with status 0 without running the statement and without an error. The wrapper now uses `.timeout` (a dot-command) and `-mmap` (a command-line option), which the shell handles correctly. The bug is in the SQLite shell itself (3.53.x and trunk), so it is worked around here rather than waiting for an upstream fix.
@@ -38,23 +61,23 @@
 - `build.sh --zip` failed about one build in five with a false "module.prop is not at the root" error: `unzip -l | grep -q` under `pipefail` lost a race with SIGPIPE.
 
 ### Changed
-- `sqlite3-tool` and `sqlite3-doctor` (v2.3) set their busy timeout with `.timeout` too — same behaviour, and immune to the `-bail` problem.
+- `sqlite3-tool` and `sqlite3-doctor` (v2.3) set their busy timeout with `.timeout` too - same behaviour, and immune to the `-bail` problem.
 - `mmap_size` set by the wrapper is now also the ceiling: a larger `PRAGMA mmap_size` is capped. Pass `-mmap N` to go higher, `-mmap 0` to turn it off.
 
 ### New
-- `tests/sqlite3-module-test.sh` — 168 tests covering the binary, every compile option, the SQL features, the wrapper (including lock waiting), `sqldiff`, `sqlite3-tool`, `sqlite3-doctor` and, on the phone, the installed module. Run it on the device after every release.
-- WebUI help page: new **Test Suite** section — how to run the suite on the phone and read its result.
+- `tests/sqlite3-module-test.sh` - 168 tests covering the binary, every compile option, the SQL features, the wrapper (including lock waiting), `sqldiff`, `sqlite3-tool`, `sqlite3-doctor` and, on the phone, the installed module. Run it on the device after every release.
+- WebUI help page: new **Test Suite** section - how to run the suite on the phone and read its result.
 - WebUI help page is now pure documentation: no version badge, no version in the footer and no "New in" notes. Release notes live here and on the GitHub release.
 - `build.sh` runs the same suite against the host build and the module's own scripts before anything is written, so a new SQLite version that breaks the wrapper or the tools cannot ship.
 
 ---
 
-## SQLite 3.53.4 — r3
+## SQLite 3.53.4 - r3
 
 ### New
-- `UPDATE` / `DELETE … ORDER BY … LIMIT` now actually works — earlier builds only listed the flag while the statement was a syntax error.
+- `UPDATE` / `DELETE … ORDER BY … LIMIT` now actually works - earlier builds only listed the flag while the statement was a syntax error.
 - Double-quoted string literals are accepted again (`SQLITE_DQS=3`), so app databases whose views or triggers use `"text"` can be queried, written and altered.
-- Commits use `fdatasync()` instead of `fsync()`, and allocations use bionic's `malloc_usable_size()` — two flags that previously had no effect at all.
+- Commits use `fdatasync()` instead of `fsync()`, and allocations use bionic's `malloc_usable_size()` - two flags that previously had no effect at all.
 - `build.sh` verifies itself before writing anything: compile options, platform flags, ELF checks on both binaries, and a functional test run on the build machine.
 
 ### Fixed
@@ -62,9 +85,9 @@
 - `sqlite3-tool restore` copied files with `cp` and removed `-shm` under live connections, which could corrupt a database an app still had open; it now restores through SQLite and keeps owner and SELinux label.
 - `sqlite3-tool` hid SQLite's error messages, so `vacuum`, `analyze` and `optimize` failed without saying why, and `wal-checkpoint` reported success even when another connection kept it from finishing.
 - `sqlite3-doctor` reported a locked or unreadable database as healthy, because it could not tell "the check found nothing" from "the check could not run".
-- `service.sh` dropped the last line of `module.prop` at boot when the file had no trailing newline — normally `updateJson=`, which silently disabled update checks.
+- `service.sh` dropped the last line of `module.prop` at boot when the file had no trailing newline - normally `updateJson=`, which silently disabled update checks.
 - `.sqliterc-full` had its WAL checkpoint advice backwards, printed values at startup, and set `mmap_size` and `busy_timeout` that the wrapper overrides anyway.
-- WebUI help page: every example is now tested — the FTS test commands no longer fail with `syntax error: unexpected '('` — flag tables are readable on phones, and obsolete entries are gone.
+- WebUI help page: every example is now tested - the FTS test commands no longer fail with `syntax error: unexpected '('` - flag tables are readable on phones, and obsolete entries are gone.
 
 Full details in [CHANGELOG.md](https://github.com/nikakvo/sqlite3-android-arm64-only/blob/main/CHANGELOG.md).
 
@@ -72,7 +95,7 @@ Full details in [CHANGELOG.md](https://github.com/nikakvo/sqlite3-android-arm64-
 
 ## v3.53.4-r2
 
-### Fixed — the tools
+### Fixed - the tools
 
 - **`sqlite3-tool backup` could delete the database it was backing up.** It
   started with `rm -f "$DEST"`, so `sqlite3-tool backup app.db app.db` removed
@@ -97,15 +120,15 @@ Full details in [CHANGELOG.md](https://github.com/nikakvo/sqlite3-android-arm64-
   non-empty WAL is flagged now.
 - Both tools are v2.1.
 
-### Fixed — the module
+### Fixed - the module
 
-- `customize.sh` ran `pkill -x sqlite3`, which never matched anything — the
-  wrapper `exec`s into `sqlite3.real` — and was not needed, since the new files
+- `customize.sh` ran `pkill -x sqlite3`, which never matched anything - the
+  wrapper `exec`s into `sqlite3.real` - and was not needed, since the new files
   are only mounted after a reboot. Removed.
 - `files/sqliterc-full` set the busy timeout with a PRAGMA that printed `5000`
   at startup when loaded with `-init`. It uses `.timeout 5000` now.
 
-### Fixed — the WebUI help page
+### Fixed - the WebUI help page
 
 Every example was run against a build with the same flags as the shipped
 binary.
@@ -126,7 +149,7 @@ binary.
 - The Geopoly example used a column `shape`; the column is `_shape`. It also
   inserts a polygon now, so the query returns a row.
 - `sqlite_compileoption_used('DQS')` returns 1 (the option is present with
-  value 0), and `ENABLE_DESERIALIZE` returns 0 — both examples claimed the
+  value 0), and `ENABLE_DESERIALIZE` returns 0 - both examples claimed the
   opposite. `PRAGMA temp_store` reports 0, not 2.
 - The Session Config section still described the old nine-PRAGMA wrapper
   (`cache_size=-20000`, `wal_autocheckpoint=500`, `recursive_triggers`, …). It
@@ -156,7 +179,7 @@ binary.
 Same SQLite release, rebuilt. The changes are in how it was compiled and in the
 scripts around it.
 
-### Fixed — the build
+### Fixed - the build
 
 - **`SQLITE_SECURE_DELETE` was enabled in every previous build.** The flag was
   passed as `-DSQLITE_SECURE_DELETE=0`, but SQLite tests it with `#ifdef`, not
@@ -169,13 +192,13 @@ scripts around it.
   ```
 
   Defining it as `0` still defines it. Every `DELETE` was zero-filling its
-  freed pages and every `VACUUM` was doing extra write work — the exact
+  freed pages and every `VACUUM` was doing extra write work - the exact
   opposite of what the documentation claimed. The flag is now omitted
   entirely. Use `PRAGMA secure_delete=ON` per connection if you want it, or
   `SQLITE_FAST_SECURE_DELETE` for the cheaper in-page variant.
 
 - **Two flags did nothing at all.** `SQLITE_ENABLE_JSON1` and
-  `SQLITE_ENABLE_DESERIALIZE` appear nowhere in the SQLite source any more —
+  `SQLITE_ENABLE_DESERIALIZE` appear nowhere in the SQLite source any more -
   JSON has been built in since 3.38 and deserialize since 3.36 (you disable it
   with `SQLITE_OMIT_DESERIALIZE`). Both were removed. Nothing is lost; the
   features were always there. The old docs told you to verify them with
@@ -191,17 +214,17 @@ scripts around it.
   `minor = (v % 1000000) / 1000`, printing **3.530.400** instead of 3.53.4.
   The packed format is `XYYZZPP`; the decoder now handles it correctly.
 
-- `SQLITE_MAX_EXPR_DEPTH=1000` was removed — that is already the default.
+- `SQLITE_MAX_EXPR_DEPTH=1000` was removed - that is already the default.
 
-### Added — the build
+### Added - the build
 
 - **Parallel sorter.** `SQLITE_MAX_WORKER_THREADS=4` and
   `SQLITE_DEFAULT_WORKER_THREADS=2`. Both were implicitly 0, which disabled
   parallel sorting entirely. Large `CREATE INDEX` and `ORDER BY` get faster on
   a multi-core phone.
-- `SQLITE_ENABLE_SORTER_REFERENCES` — less memory when sorting wide rows.
+- `SQLITE_ENABLE_SORTER_REFERENCES` - less memory when sorting wide rows.
 - `SQLITE_ENABLE_SNAPSHOT`, `SQLITE_ENABLE_RBU`.
-- `HAVE_MALLOC_USABLE_SIZE=1` — bionic has it.
+- `HAVE_MALLOC_USABLE_SIZE=1` - bionic has it.
 - `SQLITE_TEMP_STORE=2` instead of `3`. Three forces temp tables into memory
   unconditionally and ignores `PRAGMA temp_store`, which can OOM the process
   on a large temp table.
@@ -221,12 +244,12 @@ scripts around it.
   install straight into a module tree with `--install DIR`, bumping
   `module.prop` for you.
 
-### Fixed — the tools
+### Fixed - the tools
 
 - **`sqlite3-tool backup` used `cp`.** The comment claimed it used SQLite's
   online backup API; the code ran `wal_checkpoint(FULL)` and then copied the
   file. That writes to the source (so it fails on a read-only database) and is
-  not atomic — a concurrent writer produces a corrupt backup. It now uses
+  not atomic - a concurrent writer produces a corrupt backup. It now uses
   `.backup`, which is the real online backup API, and verifies the result with
   `integrity_check` before reporting success.
 - **`sqlite3-tool restore` copied `-wal` and `-shm` from the backup.** A stale
@@ -248,13 +271,13 @@ scripts around it.
 - `sqlite3-doctor` always exited 0. It now exits 1 when it finds problems, so
   it can be used in a script.
 
-### Added — the tools
+### Added - the tools
 
-- `sqlite3-tool biggest <db> [n]` — largest tables and indexes on disk via
+- `sqlite3-tool biggest <db> [n]` - largest tables and indexes on disk via
   `dbstat`. This is the part of `sqlite3_analyzer` people actually want;
   `sqlite3_analyzer` itself needs TCL to build and was never shipped, though
   `customize.sh` checked for it.
-- `sqlite3-tool compile-options [filter]` — see exactly how your `sqlite3` was
+- `sqlite3-tool compile-options [filter]` - see exactly how your `sqlite3` was
   built.
 - `sqlite3-tool version`.
 - `sqlite3-doctor --quick` (skip `integrity_check` and row counts) and
@@ -263,7 +286,7 @@ scripts around it.
 - Both tools honour `SQLITE3_BIN`, which also makes them testable against any
   sqlite3 build.
 
-### Changed — the wrapper
+### Changed - the wrapper
 
 `/system/bin/sqlite3` injected nine PRAGMAs. Five of them just repeated a
 compile-time default that already applies to every connection, and the rest are
@@ -283,14 +306,14 @@ The `.open` caveat is now documented rather than silently not working.
   (wrong architecture or corrupt file), printing `uname -m` and
   `ro.product.cpu.abi` so the report is actionable. `sqldiff`, `sqlite3-tool`
   and `sqlite3-doctor` are treated as optional and only warn. It also warns when
-  `module.prop` and the binary disagree about the version — the signature of a
-  package assembled from mismatched parts — and when the build has
+  `module.prop` and the binary disagree about the version - the signature of a
+  package assembled from mismatched parts - and when the build has
   `SECURE_DELETE` on. The architecture check reads `ro.product.cpu.abi` as well
   as `uname -m`, and the dead `sqlite3_analyzer` branch is gone.
 - `service.sh` rebuilds `module.prop` with a read loop instead of `sed -i`, and
   only when the status text actually changed.
 - `uninstall.sh` no longer tries to delete `/.sqliterc-full` in the filesystem
-  root — nothing ever created it.
+  root - nothing ever created it.
 - `files/sqliterc-full` documents which PRAGMAs are already compiled in, so it
   no longer suggests setting things that are set.
 - The WebUI no longer requests Google Fonts (it fails on a device with no
@@ -308,7 +331,7 @@ The `.open` caveat is now documented rather than silently not working.
 
 ## v3.53.3
 
-> SQLite 3.53.3 — 2026-06-26
+> SQLite 3.53.3 - 2026-06-26
 
 Bugfix patch release. No new features.
 
@@ -322,20 +345,20 @@ Fixes for problems in 3.53.0 / 3.53.1 / 3.53.2, mostly reported by AI-generated 
 
 ---
 
-## v3.53.2-r1 — 2026-06-13
+## v3.53.2-r1 - 2026-06-13
 
 ### SQLite
 - Updated to **SQLite 3.53.2** (2026-06-03)
 
 ### New binaries
-- **`sqldiff`** — official SQLite diff tool; outputs SQL to transform one database into another. Supports `--schema`, `--table`, `--summary`, `--transaction` and `--vtab` flags. Built from the same source with identical compile flags.
+- **`sqldiff`** - official SQLite diff tool; outputs SQL to transform one database into another. Supports `--schema`, `--table`, `--summary`, `--transaction` and `--vtab` flags. Built from the same source with identical compile flags.
 
 ### New scripts
-- **`sqlite3-doctor`** — full database diagnostics in one command. Checks file validity, WAL state, page info, freelist/fragmentation, `integrity_check`, `quick_check`, foreign key violations and table stats. Outputs a color-coded report with a summary at the end.
-- **`sqlite3-tool`** — helper wrapper with 13 ready-to-use commands: `integrity`, `vacuum`, `analyze`, `optimize`, `wal-checkpoint`, `tables`, `indexes`, `schema`, `size`, `info`, `backup`, `restore`, `doctor`. Backup is WAL-aware: runs `wal_checkpoint(FULL)` and copies `-wal`/`-shm` files automatically.
+- **`sqlite3-doctor`** - full database diagnostics in one command. Checks file validity, WAL state, page info, freelist/fragmentation, `integrity_check`, `quick_check`, foreign key violations and table stats. Outputs a color-coded report with a summary at the end.
+- **`sqlite3-tool`** - helper wrapper with 13 ready-to-use commands: `integrity`, `vacuum`, `analyze`, `optimize`, `wal-checkpoint`, `tables`, `indexes`, `schema`, `size`, `info`, `backup`, `restore`, `doctor`. Backup is WAL-aware: runs `wal_checkpoint(FULL)` and copies `-wal`/`-shm` files automatically.
 
 ### Build
-- Added `build.sh` — fully automated build script. Drop the two SQLite zip archives (`sqlite-amalgamation-*.zip` and `sqlite-src-*.zip`) in the working directory and run `./build.sh`. Extracts sources, builds all binaries and writes results to `android-module/`. No manual steps required for future version updates.
+- Added `build.sh` - fully automated build script. Drop the two SQLite zip archives (`sqlite-amalgamation-*.zip` and `sqlite-src-*.zip`) in the working directory and run `./build.sh`. Extracts sources, builds all binaries and writes results to `android-module/`. No manual steps required for future version updates.
 - Added `SQLITE_ENABLE_STMTVTAB` and `SQLITE_ENABLE_BYTECODE_VTAB` compile flags (were missing in previous builds).
 
 ### Help page (`index.html`)
@@ -344,12 +367,12 @@ Fixes for problems in 3.53.0 / 3.53.1 / 3.53.2, mostly reported by AI-generated 
 - Updated section numbering (Verify → 16, Uninstall → 17).
 
 ### Module
-- `customize.sh` — updated to set permissions for all new binaries. Each binary is optional: if absent from the zip it is silently skipped, so older zips remain compatible.
-- `uninstall.sh` — updated to clean up temp files created by `sqlite3-doctor` and `sqlite3-tool`.
+- `customize.sh` - updated to set permissions for all new binaries. Each binary is optional: if absent from the zip it is silently skipped, so older zips remain compatible.
+- `uninstall.sh` - updated to clean up temp files created by `sqlite3-doctor` and `sqlite3-tool`.
 
 ---
 
-## v3.53.2 — 2026-06-03
+## v3.53.2 - 2026-06-03
 
 ### Initial Release
 
@@ -361,7 +384,7 @@ Fixes for problems in 3.53.0 / 3.53.1 / 3.53.2, mostly reported by AI-generated 
 **Wrapper architecture:**
 - `sqlite3` is a shell script wrapper; `sqlite3.real` is the compiled binary
 - Adaptive `mmap_size` detection from `/proc/meminfo` at startup (64 / 128 / 256 MB)
-- Session PRAGMAs injected via `-cmd` — no `$HOME` or `.sqliterc` dependency
+- Session PRAGMAs injected via `-cmd` - no `$HOME` or `.sqliterc` dependency
 
 **Session defaults applied automatically:**
 - `cache_size = -20000` (~20 MB page cache)
@@ -382,7 +405,7 @@ Fixes for problems in 3.53.0 / 3.53.1 / 3.53.2, mostly reported by AI-generated 
 - API ARMOR, STMT SCAN STATUS, NORMALIZED SQL, SOUNDEX, and more
 
 **Deployed files:**
-- `/system/bin/sqlite3` — wrapper script
-- `/system/bin/sqlite3.real` — compiled binary
-- `/data/local/.sqliterc-full` + `/.sqliterc-full` — full reference config
-- `uninstall.sh` — removes all deployed files on uninstall
+- `/system/bin/sqlite3` - wrapper script
+- `/system/bin/sqlite3.real` - compiled binary
+- `/data/local/.sqliterc-full` + `/.sqliterc-full` - full reference config
+- `uninstall.sh` - removes all deployed files on uninstall

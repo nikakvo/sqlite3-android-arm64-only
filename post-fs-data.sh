@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Only fast, critical work belongs here — post-fs-data blocks boot for EVERY
+# Only fast, critical work belongs here - post-fs-data blocks boot for EVERY
 # module, so any delay adds up with the rest of your module list and can trip
 # a bootloop protector.
 #

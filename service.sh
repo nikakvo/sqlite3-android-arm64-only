@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# service.sh — runs late in boot, so waiting here is safe.
+# service.sh - runs late in boot, so waiting here is safe.
 
 # ${0%/*} is the module directory only when the script is called with a path,
 # which is how Magisk/KSU start it. Fall back to "." so a manual "sh
@@ -9,7 +9,7 @@ MODDIR=${0%/*}
 SQLITE_REAL="$MODDIR/system/bin/sqlite3.real"
 PROP="$MODDIR/module.prop"
 SQLITERC_DIR="/data/local"
-BASE_DESC="Max-feature standalone SQLite build for Android Arm64, with sqldiff, sqlite3-tool and sqlite3-doctor"
+FALLBACK_DESC="Max-feature standalone SQLite build for Android Arm64, with sqldiff, sqlite3-tool and sqlite3-doctor"
 
 # Wait for the binary to become visible (up to 10 s on a slow mount).
 i=0
@@ -28,7 +28,7 @@ elif VER=$("$SQLITE_REAL" --version 2>/dev/null | cut -d' ' -f1) && [ -n "$VER" 
     # DELETE and VACUUM down.
     if "$SQLITE_REAL" ":memory:" "PRAGMA compile_options;" 2>/dev/null |
         grep -qx "SECURE_DELETE"; then
-        STATUS="$STATUS (secure_delete ON)"
+        STATUS="$STATUS, secure_delete ON"
     fi
 else
     STATUS="not working"
@@ -38,8 +38,21 @@ fi
 # Rebuilt with a read loop rather than sed -i: nothing in the description can
 # then be mistaken for a sed replacement pattern, and the file is only touched
 # when the text actually changes.
+# The base text comes from module.prop itself, minus the status this script
+# appended on an earlier boot, so a description changed in module.prop is no
+# longer overwritten by a copy kept here. Only the known status forms are
+# cut, so a description that happens to end in "(...)" stays whole.
+CUR_DESC=$(grep '^description=' "$PROP" 2>/dev/null | head -n 1)
+BASE_DESC="${CUR_DESC#description=}"
+case "$BASE_DESC" in
+    # The literal parts are quoted: unquoted "(" after a space is not taken
+    # literally by mksh inside ${var%pattern}, and nothing was cut.
+    *" (v"*" working"*")") BASE_DESC="${BASE_DESC%" (v"*" working"*")"}" ;;
+    *" (binary missing)")  BASE_DESC="${BASE_DESC%" (binary missing)"}" ;;
+    *" (not working)")     BASE_DESC="${BASE_DESC%" (not working)"}" ;;
+esac
+[ -n "$BASE_DESC" ] || BASE_DESC="$FALLBACK_DESC"
 NEW_DESC="description=$BASE_DESC ($STATUS)"
-CUR_DESC=$(grep '^description=' "$PROP" 2>/dev/null)
 
 if [ "$NEW_DESC" != "$CUR_DESC" ] && [ -f "$PROP" ]; then
     TMP="$PROP.tmp.$$"

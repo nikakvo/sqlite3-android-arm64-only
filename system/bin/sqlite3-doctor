@@ -1,15 +1,21 @@
 #!/system/bin/sh
-# sqlite3-doctor — diagnostics for SQLite databases on Android ARM64
+# sqlite3-doctor - diagnostics for SQLite databases on Android ARM64
 # Part of nikakvo/sqlite3-android-arm64-only
 # Usage: sqlite3-doctor [options] <database.db>
 
-VERSION="2.3"
+VERSION="2.4"
 
 SQLITE3="${SQLITE3_BIN:-/system/bin/sqlite3.real}"
 [ -x "$SQLITE3" ] || SQLITE3="${0%/*}/sqlite3.real"
 [ -x "$SQLITE3" ] || SQLITE3="sqlite3"
 
 BUSY_MS="${SQLITE3_BUSY_MS:-5000}"
+
+# A WAL that an app keeps open is reused from the start after each checkpoint,
+# not shrunk, so its size says nothing about unmerged pages. Only a WAL far past
+# the default auto-checkpoint size (1000 pages of 4 KB) points at starved
+# checkpoints, e.g. a reader that never lets go.
+WAL_WARN_BYTES=$(( 4 * 1024 * 1024 ))
 
 # Row counting reads every table end to end. Skipped above this size unless
 # --full is given, so running the doctor on a multi-GB database is not a
@@ -46,13 +52,13 @@ usage() {
 Usage: sqlite3-doctor [options] <database.db>
 
 Options:
-  --quick     skip integrity_check and row counts (fast triage)
+  --quick     quick_check instead of integrity_check, no row counts (fast triage)
   --full      always count rows, even on a large database
   -h, --help  this text
 
 Runs a full diagnostic on a SQLite database file: header validation, WAL
-state, page and freelist analysis, quick_check, integrity_check, foreign key
-check and per-table row counts.
+state, page and freelist analysis, integrity_check, foreign key check and
+per-table row counts.
 
 Environment:
   SQLITE3_BIN       path to the sqlite3 binary
@@ -78,25 +84,79 @@ done
 [ -n "$DB" ] || { printf "${R}Error:${N} no database specified.\nUsage: sqlite3-doctor <database.db>\n" >&2; exit 1; }
 # A name starting with "-" would be read as an option by head and sqlite3.
 case "$DB" in -*) DB="./$DB" ;; esac
+trap 'fix_sidecars "$DB"' EXIT
+trap 'exit 130' INT TERM
 
+# -init /dev/null: never read the user's sqliterc. A ".mode box" or
+# ".headers on" there changed the output this script parses and turned a
+# healthy database into "integrity_check FAILED".
 sq() {
-    "$SQLITE3" -cmd ".timeout $BUSY_MS" \
+    "$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" \
                "$DB" "$1" 2>/dev/null
 }
 
-# sqc <sql> — for checks. stdout and stderr together, with the exit status
+# sqc <sql> - for checks. stdout and stderr together, with the exit status
 # kept, so "the check found problems" (rc 0, rows) and "the check could not
 # run" (rc != 0, error text) are no longer both an empty string. Before, a
 # database that could not be read reported "No foreign key violations".
 sqc() {
-    "$SQLITE3" -cmd ".timeout $BUSY_MS" \
+    "$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" \
                "$DB" "$1" 2>&1
 }
 
 # Print a multi-line result indented, at most $2 lines.
-indent() { printf '%s\n' "$1" | head -n "$2" | while IFS= read -r line; do printf "      %s\n" "$line"; done; }
+indent() { printf '%s\n' "$1" | grep -v '^$' | head -n "$2" | while IFS= read -r line; do printf "      %s\n" "$line"; done; }
 
 qident() { printf '"%s"' "$(printf '%s' "$1" | sed 's/"/""/g')"; }
+
+# row_counts - print "count|name" for every table, sorted by name.
+# Two sqlite3 processes for any number of tables: the first builds one
+# UNION ALL query over all of them, the second runs it (doctor 2.3 started one
+# process per table). If the combined query fails (more than 500 tables, or a
+# virtual table whose module this build does not have), fall back to one query
+# per table, so every other table is still counted and a failed one shows "?".
+row_counts() {
+    _u=$(sq "SELECT group_concat('SELECT count(*), ' || quote(name) || ' FROM \"' || replace(name, '\"', '\"\"') || '\"', ' UNION ALL ') FROM (SELECT name FROM sqlite_master WHERE type='table' ORDER BY name);")
+    _c=""
+    [ -n "$_u" ] && _c=$(sq "$_u;")
+    if [ -n "$_c" ]; then
+        printf '%s\n' "$_c"
+        return 0
+    fi
+    sq "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;" |
+    while IFS= read -r _t; do
+        [ -n "$_t" ] || continue
+        _n=$(sq "SELECT count(*) FROM $(qident "$_t");")
+        printf '%s|%s\n' "${_n:-?}" "$_t"
+    done
+}
+
+# ── Sizes ─────────────────────────────────────────────────────────────────────
+# mksh, the Android shell, does 32-bit arithmetic: 3 GB is -1073741824 there,
+# so "[ $size -gt $limit ]" and "$((size / 1073741824))" went wrong for
+# databases over 2 GB. Byte counts are compared by their number of digits
+# first, and only numbers below 10^9 ever go through $(( )) or -lt/-gt.
+
+# over <bytes> <limit> - true if bytes > limit. limit must be below 10^9.
+over() {
+    [ "${#1}" -gt 9 ] && return 0
+    [ "$1" -gt "$2" ]
+}
+
+human() { # bytes -> human readable
+    _b="$1"
+    case "$_b" in
+        '' | *[!0-9]*) printf '?' ; return ;;
+    esac
+    if [ "${#_b}" -gt 9 ]; then
+        # 1 GB and up: awk works in floating point, no 32-bit limit.
+        awk -v b="$_b" 'BEGIN { printf "%.1f GB", b / 1073741824 }'
+    elif [ "$_b" -lt 1024 ]; then printf '%s B' "$_b"
+    elif [ "$_b" -lt 1048576 ]; then printf '%s KB' "$(( _b / 1024 ))"
+    elif [ "$_b" -lt 1073741824 ]; then printf '%s MB' "$(( _b / 1048576 ))"
+    else printf '1.0 GB'
+    fi
+}
 
 file_size() {
     _fs=$(wc -c < "$1" 2>/dev/null | tr -d ' \t')
@@ -106,13 +166,92 @@ file_size() {
     esac
 }
 
-human() {
-    _b="$1"
-    if   [ "$_b" -lt 1024 ]; then printf '%s B' "$_b"
-    elif [ "$_b" -lt 1048576 ]; then printf '%s KB' "$(( _b / 1024 ))"
-    elif [ "$_b" -lt 1073741824 ]; then printf '%s MB' "$(( _b / 1048576 ))"
-    else printf '%s.%s GB' "$(( _b / 1073741824 ))" "$(( (_b % 1073741824) * 10 / 1073741824 ))"
+# ── Integrity checks and Android's collations ─────────────────────────────────
+# Android's own SQLite library adds the collations LOCALIZED, UNICODE and
+# PHONEBOOK, and many databases have indexes that use them (contacts2.db,
+# calllog.db, media and app databases). A standalone sqlite3 does not have
+# them, so a whole-database integrity_check or quick_check stops at once with
+# "no such collation sequence". Before, that made a good backup "fail its own
+# integrity check". The check is then run table by table: every table that
+# does not need such a collation is still checked, and the others are named.
+#
+# run_check <db> <integrity_check|quick_check>
+# Sets CHECK_STATE:
+#   ok       the whole database passed
+#   partial  every table that could be checked passed; CHECK_SKIP names the
+#            tables that need an Android collation (CHECK_DONE / CHECK_ALL count)
+#   fail     the check found problems (CHECK_OUT)
+#   error    the check could not run at all (CHECK_OUT has SQLite's error)
+NL='
+'
+run_check() {
+    _cdb="$1"; _cp="$2"
+    CHECK_SKIP=""; CHECK_DONE=0; CHECK_ALL=0
+    CHECK_OUT=$("$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" "$_cdb" "PRAGMA $_cp;" 2>&1)
+    _crc=$?
+    if [ "$_crc" -eq 0 ]; then
+        if [ "$CHECK_OUT" = "ok" ]; then CHECK_STATE=ok; else CHECK_STATE=fail; fi
+        return 0
     fi
+    case "$CHECK_OUT" in
+        *"no such collation sequence"*) ;;
+        # The check started and found damage, then stopped on it: that is a
+        # result, not "could not run".
+        *"malformed"* | *"*** in database"*) CHECK_STATE=fail; return 0 ;;
+        *) CHECK_STATE=error; return 0 ;;
+    esac
+    # One sqlite3 run for all tables: SQL from stdin goes on after an error.
+    _cscript=$("$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" "$_cdb" \
+        "SELECT '.print @@ ' || name || char(10) || 'PRAGMA $_cp(' || quote(name) || ');' FROM sqlite_master WHERE type='table' AND sql NOT LIKE 'CREATE VIRTUAL%' ORDER BY name;" 2>/dev/null)
+    [ -n "$_cscript" ] || { CHECK_STATE=error; return 0; }
+    _cres=$(printf '%s\n' "$_cscript" | "$SQLITE3" -init /dev/null -cmd ".timeout $BUSY_MS" "$_cdb" 2>&1)
+    _ct=""; _cbad=""
+    while IFS= read -r _cl; do
+        case "$_cl" in
+            "@@ "*) _ct="${_cl#@@ }"; CHECK_ALL=$((CHECK_ALL + 1)) ;;
+            ok) CHECK_DONE=$((CHECK_DONE + 1)) ;;
+            *"no such collation sequence: "*) CHECK_SKIP="${CHECK_SKIP:+$CHECK_SKIP, }$_ct (${_cl##*: })" ;;
+            '') ;;
+            *) _cbad="$_cbad$_ct: $_cl$NL" ;;
+        esac
+    done << END_CHECK
+$_cres
+END_CHECK
+    if [ -n "$_cbad" ]; then
+        CHECK_STATE=fail; CHECK_OUT="$_cbad"
+    elif [ "$CHECK_DONE" -eq 0 ] && [ -z "$CHECK_SKIP" ]; then
+        CHECK_STATE=error
+    else
+        CHECK_STATE=partial
+    fi
+}
+
+# One line for a partial result.
+partial_msg() {
+    printf '%s passed for %s of %s tables; not checked, they need a collation only Android'"'"'s own SQLite has: %s' \
+        "$1" "$CHECK_DONE" "$CHECK_ALL" "$CHECK_SKIP"
+}
+
+# ── SELinux labels of -wal / -shm / -journal ─────────────────────────────────
+# When root opens a database that has no -shm/-wal yet (its app is not
+# running), SQLite creates them with root's SELinux label, not the app's
+# (e.g. privapp_data_file:s0 next to a database labelled s0:c512,c768). A
+# read-only connection does not remove them again. An app may then be refused
+# write access to its own -shm. Give them the label of the database itself.
+fix_sidecars() {
+    [ -d /sys/fs/selinux ] && [ -w /data/adb ] || return 0
+    for _sf in "$@"; do
+        [ -f "$_sf" ] || continue
+        [ -e "$_sf-wal" ] || [ -e "$_sf-shm" ] || [ -e "$_sf-journal" ] || continue
+        # stat -c %C prints the bare label (ls -Z pads it into a column, which
+        # broke the first version of this).
+        _sctx=$(stat -c %C "$_sf" 2>/dev/null)
+        case "$_sctx" in u:object_r:*) ;; *) continue ;; esac
+        for _ss in "$_sf-wal" "$_sf-shm" "$_sf-journal"; do
+            [ -e "$_ss" ] || continue
+            [ "$(stat -c %C "$_ss" 2>/dev/null)" = "$_sctx" ] || chcon "$_sctx" "$_ss" 2>/dev/null
+        done
+    done
 }
 
 printf "\n${W}%s${N}\n" "────────────────────────────────────────"
@@ -130,18 +269,18 @@ if [ ! -r "$DB" ]; then
 fi
 
 # A SQLite file starts with the literal string "SQLite format 3" followed by a
-# NUL. One head is enough — the old version ran dd twice and threw the first
+# NUL. One head is enough - the old version ran dd twice and threw the first
 # result away.
 DB_BYTES=$(file_size "$DB")
-if [ "$DB_BYTES" -eq 0 ]; then
+if [ "$DB_BYTES" = "0" ]; then
     # SQLite treats a 0-byte file as a new database; there is nothing to check.
-    warn "Empty file (0 bytes) — SQLite would treat it as a new, empty database"
+    warn "Empty file (0 bytes) - SQLite would treat it as a new, empty database"
     printf "\n"
     exit 1
 elif [ "$(head -c 15 "$DB" 2>/dev/null)" = "SQLite format 3" ]; then
     ok "Valid SQLite3 file"
 else
-    fail "Not a valid SQLite3 file (bad magic header — not a database, or encrypted)"
+    fail "Not a valid SQLite3 file (bad magic header - not a database, or encrypted)"
     exit 1
 fi
 
@@ -149,14 +288,17 @@ info "File size: $(human "$DB_BYTES")  ($DB)"
 
 WAL_FILE="${DB}-wal"
 SHM_FILE="${DB}-shm"
-# An app that keeps its database open in WAL mode leaves a -wal file behind
-# even when everything is checkpointed; it is then 0 bytes. Only a non-empty
-# WAL holds unmerged pages.
+# A non-empty -wal file is normal: while an app has the database open, SQLite
+# keeps the WAL after a checkpoint and writes it again from the start. Its size
+# is information, not a problem (doctor 2.3 called every live WAL database
+# unhealthy). Only a very large WAL is worth a warning.
 WAL_BYTES=0
 [ -f "$WAL_FILE" ] && WAL_BYTES=$(file_size "$WAL_FILE")
-if [ "$WAL_BYTES" -gt 0 ]; then
-    warn "WAL file present: ${WAL_FILE} ($(human "$WAL_BYTES"))"
-    sug "Merge it with: sqlite3-tool wal-checkpoint $DB"
+if over "$WAL_BYTES" "$WAL_WARN_BYTES"; then
+    warn "Large WAL file: ${WAL_FILE} ($(human "$WAL_BYTES")) - checkpoints may not be keeping up"
+    sug "Merge and shrink it with: sqlite3-tool wal-checkpoint $DB"
+elif [ "$WAL_BYTES" != "0" ]; then
+    info "WAL file: ${WAL_FILE} ($(human "$WAL_BYTES"), normal while the database is in use)"
 elif [ -f "$WAL_FILE" ]; then
     ok "WAL file is empty (fully checkpointed)"
 else
@@ -167,13 +309,20 @@ fi
 # ── Database info ─────────────────────────────────────────────────────────────
 printf "\n${W}[ Database Info ]${N}\n"
 
-PAGE_SIZE=$(sq "PRAGMA page_size;")
-PAGE_COUNT=$(sq "PRAGMA page_count;")
-JOURNAL_MODE=$(sq "PRAGMA journal_mode;")
-AUTO_VACUUM=$(sq "PRAGMA auto_vacuum;")
-ENCODING=$(sq "PRAGMA encoding;")
-USER_VERSION=$(sq "PRAGMA user_version;")
-APP_ID=$(sq "PRAGMA application_id;")
+# One sqlite3 process for all of them instead of one per value. page_count
+# comes second: if the database cannot be read, the run stops there and every
+# later value stays empty.
+PRAGMAS=$(sq "PRAGMA page_size; PRAGMA page_count; PRAGMA freelist_count;
+PRAGMA journal_mode; PRAGMA auto_vacuum; PRAGMA encoding; PRAGMA user_version;
+PRAGMA application_id; SELECT count(*) FROM sqlite_master WHERE type='table';
+SELECT count(*) FROM sqlite_master WHERE type='index';")
+{
+    read -r PAGE_SIZE; read -r PAGE_COUNT; read -r FREELIST; read -r JOURNAL_MODE
+    read -r AUTO_VACUUM; read -r ENCODING; read -r USER_VERSION; read -r APP_ID
+    read -r TABLE_COUNT; read -r INDEX_COUNT
+} << END_PRAGMAS
+$PRAGMAS
+END_PRAGMAS
 
 # page_size is answered without reading the file; page_count needs a read
 # lock, so it is the one that shows whether the database is really usable.
@@ -201,21 +350,25 @@ esac
 # ── Freelist ──────────────────────────────────────────────────────────────────
 printf "\n${W}[ Freelist / Fragmentation ]${N}\n"
 
-FREELIST=$(sq "PRAGMA freelist_count;")
 info "Freelist pages: ${FREELIST}"
 
 PCT=0
 if [ -n "$FREELIST" ] && [ -n "$PAGE_COUNT" ] && [ "$PAGE_COUNT" -gt 0 ] 2>/dev/null; then
-    PCT=$(( FREELIST * 100 / PAGE_COUNT ))
+    # FREELIST * 100 would overflow 32-bit mksh arithmetic on a large file.
+    if [ "$PAGE_COUNT" -ge 100 ]; then
+        PCT=$(( FREELIST / (PAGE_COUNT / 100) ))
+    else
+        PCT=$(( FREELIST * 100 / PAGE_COUNT ))
+    fi
     if [ "$FREELIST" -eq 0 ]; then
         ok "No fragmentation (freelist = 0)"
     elif [ "$PCT" -lt 5 ]; then
         ok "Low fragmentation (${PCT}% freelist)"
     elif [ "$PCT" -lt 20 ]; then
-        warn "Moderate fragmentation (${PCT}% freelist — ${FREELIST} pages)"
+        warn "Moderate fragmentation (${PCT}% freelist - ${FREELIST} pages)"
         sug "Consider: sqlite3-tool vacuum $DB"
     else
-        fail "High fragmentation (${PCT}% freelist — ${FREELIST} pages)"
+        fail "High fragmentation (${PCT}% freelist - ${FREELIST} pages)"
         sug "Run: sqlite3-tool vacuum $DB"
     fi
 fi
@@ -223,71 +376,99 @@ fi
 # ── Integrity ─────────────────────────────────────────────────────────────────
 printf "\n${W}[ Integrity ]${N}\n"
 
-printf "  Running quick_check...\n"
-QUICK_RESULT=$(sqc "PRAGMA quick_check;")
-if [ "$QUICK_RESULT" = "ok" ]; then
-    ok "quick_check passed"
-else
-    fail "quick_check FAILED:"
-    indent "$QUICK_RESULT" 10
-fi
-
-INTEGRITY="skipped"
+# integrity_check does everything quick_check does and more, so a full run
+# reads the database once with integrity_check instead of twice.
+CHECK_ISSUE=0
+PARTIAL=0
 if [ "$QUICK" = "1" ]; then
-    info "integrity_check skipped (--quick)"
+    CHECK_NAME=quick_check
+    printf "  Running quick_check...\n"
 else
+    CHECK_NAME=integrity_check
     printf "  Running integrity_check (may take a moment)...\n"
-    INTEGRITY=$(sqc "PRAGMA integrity_check;")
-    if [ "$INTEGRITY" = "ok" ]; then
-        ok "integrity_check passed"
-    else
-        fail "integrity_check FAILED:"
-        indent "$INTEGRITY" 10
-    fi
 fi
+run_check "$DB" "$CHECK_NAME"
+case "$CHECK_STATE" in
+    ok) ok "$CHECK_NAME passed" ;;
+    partial)
+        PARTIAL=1
+        warn "$(partial_msg "$CHECK_NAME")"
+        info "That is expected for this database outside Android's framework and is not counted as an issue." ;;
+    fail)
+        CHECK_ISSUE=1
+        fail "$CHECK_NAME FAILED:"
+        indent "$CHECK_OUT" 10 ;;
+    *)
+        CHECK_ISSUE=1
+        fail "$CHECK_NAME could not run:"
+        indent "$CHECK_OUT" 5 ;;
+esac
+[ "$QUICK" = "1" ] && info "integrity_check skipped (--quick)"
 
 # ── Foreign keys ──────────────────────────────────────────────────────────────
 printf "\n${W}[ Foreign Keys ]${N}\n"
 
 FK_ERROR=0
-if FK_CHECK=$(sqc "PRAGMA foreign_key_check;"); then
-    if [ -z "$FK_CHECK" ]; then
+FK_REAL=""
+FK_QUIRK=""
+# One row per (table, parent): count and first rowid, instead of one line per
+# bad row. A parent table that does not exist at all is a schema quirk, not
+# damage: AOSP's contacts2.db has "data ... REFERENCES mimetype(_id)" while the
+# table is called "mimetypes", so every row of "data" was reported and every
+# phone got "Foreign key violations". Android never enables foreign keys there.
+if FK_CHECK=$(sqc "SELECT lower(parent) IN (SELECT lower(name) FROM sqlite_master WHERE type IN ('table','view')), count(*), min(rowid), \"table\", parent FROM pragma_foreign_key_check GROUP BY 4, 5, 1 ORDER BY 4, 5;"); then
+    while IFS='|' read -r _fe _fn _fr _ft _fp; do
+        [ -n "$_fe" ] || continue
+        if [ "$_fe" = "1" ]; then
+            FK_REAL="$FK_REAL$_ft -> $_fp: $_fn row(s) with no parent (first rowid $_fr)$NL"
+        else
+            FK_QUIRK="$FK_QUIRK$_ft -> $_fp: table $_fp does not exist, $_fn row(s) not counted$NL"
+        fi
+    done << END_FK
+$FK_CHECK
+END_FK
+    if [ -n "$FK_REAL" ]; then
+        fail "Foreign key violations found:"
+        indent "$FK_REAL" 10
+    elif [ -z "$FK_QUIRK" ]; then
         ok "No foreign key violations"
-    else
-        fail "Foreign key violations found (table|rowid|parent|fkid):"
-        indent "$FK_CHECK" 5
+    fi
+    if [ -n "$FK_QUIRK" ]; then
+        info "Foreign keys that point to a missing table (a quirk of the schema, not damage):"
+        indent "$FK_QUIRK" 10
+        [ -n "$FK_REAL" ] || ok "No other foreign key violations"
     fi
 else
-    FK_ERROR=1
-    fail "foreign_key_check could not run:"
-    indent "$FK_CHECK" 5
+    case "$FK_CHECK" in
+        *"no such collation sequence"*)
+            # A parent key whose index uses an Android collation.
+            PARTIAL=1
+            warn "foreign_key_check not possible here: it needs a collation only Android's own SQLite has (${FK_CHECK##*: })" ;;
+        *)
+            FK_ERROR=1
+            fail "foreign_key_check could not run:"
+            indent "$FK_CHECK" 5 ;;
+    esac
 fi
 
 # ── Tables ────────────────────────────────────────────────────────────────────
 printf "\n${W}[ Tables ]${N}\n"
 
-TABLE_COUNT=$(sq "SELECT count(*) FROM sqlite_master WHERE type='table';")
-INDEX_COUNT=$(sq "SELECT count(*) FROM sqlite_master WHERE type='index';")
 info "Tables:  ${TABLE_COUNT:-0}"
 info "Indexes: ${INDEX_COUNT:-0}"
 
 COUNT_ROWS=1
 [ "$QUICK" = "1" ] && COUNT_ROWS=0
-if [ "$COUNT_ROWS" = "1" ] && [ "$FULL" != "1" ] && [ "$DB_BYTES" -gt "$ROWCOUNT_LIMIT" ]; then
+if [ "$COUNT_ROWS" = "1" ] && [ "$FULL" != "1" ] && over "$DB_BYTES" "$ROWCOUNT_LIMIT"; then
     COUNT_ROWS=0
-    info "Row counts skipped — database is larger than $(human "$ROWCOUNT_LIMIT") (use --full)"
+    info "Row counts skipped - database is larger than $(human "$ROWCOUNT_LIMIT") (use --full)"
 fi
 
-if [ "$COUNT_ROWS" = "1" ]; then
-    TABLES=$(sq "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;")
-    if [ -n "$TABLES" ]; then
-        printf "  Tables found:\n"
-        printf '%s\n' "$TABLES" | while IFS= read -r t; do
-            [ -n "$t" ] || continue
-            ROW_COUNT=$(sq "SELECT count(*) FROM $(qident "$t");")
-            printf "    - %-32s %s rows\n" "$t" "${ROW_COUNT:-?}"
-        done
-    fi
+if [ "$COUNT_ROWS" = "1" ] && [ "${TABLE_COUNT:-0}" -gt 0 ] 2>/dev/null; then
+    printf "  Tables found:\n"
+    row_counts | while IFS= read -r line; do
+        printf "    - %-32s %s rows\n" "${line#*"|"}" "${line%%"|"*}"
+    done
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
@@ -296,17 +477,19 @@ printf "${W}  Summary${N}\n"
 printf "${W}%s${N}\n" "────────────────────────────────────────"
 
 ISSUES=0
-[ "$QUICK_RESULT" != "ok" ]                      && { fail "quick_check failed";     ISSUES=$((ISSUES+1)); }
-[ "$INTEGRITY" != "ok" ] && [ "$QUICK" != "1" ]  && { fail "integrity_check failed"; ISSUES=$((ISSUES+1)); }
-[ -n "$FK_CHECK" ] && [ "$FK_ERROR" = "0" ]      && { warn "Foreign key violations"; ISSUES=$((ISSUES+1)); }
+[ "$CHECK_ISSUE" = "1" ]                         && { fail "$CHECK_NAME failed";     ISSUES=$((ISSUES+1)); }
+[ -n "$FK_REAL" ]                                && { warn "Foreign key violations"; ISSUES=$((ISSUES+1)); }
 [ "$FK_ERROR" = "1" ]                            && { fail "foreign_key_check failed"; ISSUES=$((ISSUES+1)); }
-[ "$WAL_BYTES" -gt 0 ]                           && { warn "Unmerged WAL file";      ISSUES=$((ISSUES+1)); }
+over "$WAL_BYTES" "$WAL_WARN_BYTES"            && warn "Large WAL file (not counted as an issue)"
 [ "$PCT" -ge 20 ] 2>/dev/null                    && { warn "High fragmentation";     ISSUES=$((ISSUES+1)); }
 
-if [ "$ISSUES" -eq 0 ]; then
-    printf "\n  ${G}Database looks healthy — no issues found.${N}\n\n"
+if [ "$ISSUES" -eq 0 ] && [ "$PARTIAL" = "1" ]; then
+    printf "\n  ${G}No issues found${N} - parts that need Android's own collations could not be checked (see above).\n\n"
+    exit 0
+elif [ "$ISSUES" -eq 0 ]; then
+    printf "\n  ${G}Database looks healthy - no issues found.${N}\n\n"
     exit 0
 else
-    printf "\n  ${Y}Found %d issue(s) — see above for details.${N}\n\n" "$ISSUES"
+    printf "\n  ${Y}Found %d issue(s) - see above for details.${N}\n\n" "$ISSUES"
     exit 1
 fi

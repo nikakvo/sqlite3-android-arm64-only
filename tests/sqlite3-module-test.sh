@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# sqlite3-module-test.sh — functional test suite for sqlite3-android-arm64-only
+# sqlite3-module-test.sh - functional test suite for sqlite3-android-arm64-only
 # Part of nikakvo/sqlite3-android-arm64-only
 #
 # Tests the installed module end to end: the binary and its compile options,
@@ -27,7 +27,7 @@
 #
 # Exit status: 0 if every test passed, 1 otherwise.
 
-SUITE_VERSION="1.1"
+SUITE_VERSION="1.2"
 MOD_ID="sqlite3-arm64-only"
 
 BIN_DIR="${BIN_DIR:-/system/bin}"
@@ -106,7 +106,7 @@ $_out"
     fi
 }
 
-# q <sql...> — run SQL on an in-memory database with the raw binary
+# q <sql...> - run SQL on an in-memory database with the raw binary
 q() { "$REAL" -batch :memory: "$@" 2>&1; }
 
 # at_least <x.y.z> - is the binary under test at least that SQLite version?
@@ -326,6 +326,8 @@ test_wrapper() {
     t_eq  "a larger PRAGMA mmap_size is capped" "$M" "$("$WRAP" "$W" 'PRAGMA mmap_size=1099511627776;' 2>&1)"
     t_eq  "a larger -mmap raises the ceiling" "1073741824" "$("$WRAP" -mmap 1073741824 "$W" 'PRAGMA mmap_size;' 2>&1)"
     t_eq "--version passes through" "$("$REAL" --version)" "$("$WRAP" --version 2>&1)"
+    # The wrapper reads MemTotal with shell builtins only (no awk since 1.2).
+    t_eq "mmap tier works with no PATH at all (no awk exec)" "$M" "$(PATH=/nonexistent "$WRAP" "$W" 'PRAGMA mmap_size;' 2>&1)"
     t_eq "SQLITE3_NO_WRAPPER=1 bypasses it" "0" "$(SQLITE3_NO_WRAPPER=1 "$WRAP" "$W" 'PRAGMA busy_timeout;' 2>&1)"
     printf '.output /dev/null\nPRAGMA cache_size=-2000;\n.output stdout\n' > "$WORK/rc"
     t_eq "-init file runs, wrapper values still apply" "-2000|5000" "$("$WRAP" -init "$WORK/rc" "$W" 'SELECT (SELECT cache_size FROM pragma_cache_size)||"|"||(SELECT timeout FROM pragma_busy_timeout);' 2>&1)"
@@ -403,7 +405,50 @@ test_tool() {
     t_has "vacuum shrinks the file" "VACUUM complete" "$("$TOOL" vacuum "$T" 2>&1)"
     t_has "wal-checkpoint on a rollback-journal db" "Not in WAL mode" "$("$TOOL" wal-checkpoint "$T" 2>&1)"
     "$REAL" "$T" "PRAGMA journal_mode=WAL;" >/dev/null 2>&1
-    t_has "wal-checkpoint in WAL mode" "Checkpointed" "$("$TOOL" wal-checkpoint "$T" 2>&1)"
+    t_has "wal-checkpoint in WAL mode" "Checkpoint complete" "$("$TOOL" wal-checkpoint "$T" 2>&1)"
+
+    # A live WAL database: a second connection keeps it open (idle) the whole
+    # time, like an app does. FULL left the -wal file at its size; TRUNCATE
+    # must bring it to 0 bytes even with that connection open.
+    V="$WORK/live.db"
+    rm -f "$V" "$V-wal" "$V-shm"
+    "$REAL" "$V" "PRAGMA journal_mode=WAL;" "CREATE TABLE t(x);" >/dev/null 2>&1
+    "$REAL" "$V" "SELECT count(*) FROM t;" ".shell sleep 3" >/dev/null 2>&1 &
+    VPID=$!
+    sleep 1
+    "$REAL" "$V" "INSERT INTO t SELECT randomblob(1000) FROM generate_series(1,100);" >/dev/null 2>&1
+    t_eq  "live WAL db: -wal is not empty before the checkpoint" "yes" "$([ -s "$V-wal" ] && echo yes)"
+    t_rc  "live WAL db: wal-checkpoint succeeds" 0 "$TOOL" wal-checkpoint "$V"
+    t_eq  "live WAL db: -wal truncated to 0 bytes" "0" "$(wc -c < "$V-wal" | tr -d ' ')"
+    wait "$VPID"
+
+    # A "|" in a table name, and more than 500 tables (beyond SQLite's
+    # compound SELECT limit, so tables/doctor take the per-table fallback).
+    PB="$WORK/pipe.db"
+    rm -f "$PB"
+    "$REAL" "$PB" 'CREATE TABLE "a|b"(x); INSERT INTO "a|b" VALUES(1),(2);' >/dev/null 2>&1
+    t_eq  "tables: name with | and its count" "1" "$("$TOOL" tables "$PB" 2>&1 | grep -c '^  a|b  *2 rows$')"
+    MANY="$WORK/many.db"
+    rm -f "$MANY"
+    "$REAL" "$MANY" "SELECT 1;" >/dev/null 2>&1
+    i=0
+    while [ "$i" -lt 510 ]; do printf 'CREATE TABLE t%03d(x);\n' "$i"; i=$((i + 1)); done > "$WORK/many.sql"
+    echo "INSERT INTO t509 VALUES(1),(2),(3);" >> "$WORK/many.sql"
+    "$REAL" "$MANY" < "$WORK/many.sql" >/dev/null 2>&1
+    OUT=$("$TOOL" tables "$MANY" 2>&1)
+    t_eq  "tables: 510 tables listed (fallback path)" "510" "$(printf '%s\n' "$OUT" | grep -c ' rows$')"
+    t_eq  "tables: ... with their counts" "1" "$(printf '%s\n' "$OUT" | grep -c '^  t509  *3 rows$')"
+
+    # A user sqliterc must not change what the tools parse. 2.4 read it:
+    # with ".mode box" a good database "FAILED" integrity_check.
+    RCD="$WORK/xdg"
+    mkdir -p "$RCD/sqlite3"
+    printf '.headers on\n.mode box\n' > "$RCD/sqlite3/sqliterc"
+    t_has "user sqliterc is active for the wrapper" "╭" "$(XDG_CONFIG_HOME="$RCD" "$WRAP" :memory: 'SELECT 1;' 2>&1)"
+    t_rc  "user sqliterc: integrity still passes" 0 env XDG_CONFIG_HOME="$RCD" "$TOOL" integrity "$T"
+    t_has "user sqliterc: info still plain" "Journal mode:    wal" "$(XDG_CONFIG_HOME="$RCD" "$TOOL" info "$T" 2>&1)"
+    t_rc  "user sqliterc: backup still verifies" 0 env XDG_CONFIG_HOME="$RCD" "$TOOL" backup "$T" "$WORK/rc-backup.db"
+    t_rc  "user sqliterc: doctor still healthy" 0 env XDG_CONFIG_HOME="$RCD" "$DOC" "$T"
 
     mkdir -p "$WORK/bk dir"
     t_rc  "backup into a directory (with a space)" 0 "$TOOL" backup "$T" "$WORK/bk dir"
@@ -436,6 +481,30 @@ test_doctor() {
     "$REAL" "$G" "CREATE TABLE p(id INTEGER PRIMARY KEY); CREATE TABLE c(pid REFERENCES p(id)); INSERT INTO p VALUES(1); INSERT INTO c VALUES(1);" >/dev/null 2>&1
     t_rc  "healthy database -> exit 0" 0 "$DOC" "$G"
     t_rc  "--quick -> exit 0" 0 "$DOC" --quick "$G"
+    OUT=$("$DOC" "$G" 2>&1)
+    t_eq  "full run reads the db once (no separate quick_check)" "" "$(printf '%s\n' "$OUT" | grep 'Running quick_check')"
+    t_has "... integrity_check runs" "integrity_check passed" "$OUT"
+    t_has "--quick runs quick_check" "quick_check passed" "$("$DOC" --quick "$G" 2>&1)"
+    t_eq  "row counts listed" "1" "$(printf '%s\n' "$OUT" | grep -c '^    - p  *1 rows$')"
+
+    # A healthy WAL database held open by another connection (what every app
+    # database looks like). 2.3 called the non-empty -wal "unmerged" (exit 1).
+    LW="$WORK/livewal.db"
+    rm -f "$LW" "$LW-wal" "$LW-shm"
+    "$REAL" "$LW" "PRAGMA journal_mode=WAL;" "CREATE TABLE t(x);" >/dev/null 2>&1
+    "$REAL" "$LW" "SELECT count(*) FROM t;" ".shell sleep 8" >/dev/null 2>&1 &
+    LWPID=$!
+    sleep 1
+    "$REAL" "$LW" "INSERT INTO t SELECT randomblob(1000) FROM generate_series(1,100);" >/dev/null 2>&1
+    OUT=$("$DOC" --quick "$LW" 2>&1); RC=$?
+    t_eq  "live WAL db -> exit 0" "0" "$RC"
+    t_has "... WAL size shown as info" "normal while the database is in use" "$OUT"
+    # More than 4 MB of WAL in one go: warned about, not counted as an issue.
+    "$REAL" "$LW" "INSERT INTO t SELECT randomblob(1000) FROM generate_series(1,6000);" >/dev/null 2>&1
+    OUT=$("$DOC" --quick "$LW" 2>&1); RC=$?
+    t_eq  "large WAL -> still exit 0" "0" "$RC"
+    t_has "... and warned about" "Large WAL file" "$OUT"
+    wait "$LWPID"
 
     F="$WORK/fk.db"
     cp "$G" "$F"
@@ -443,6 +512,19 @@ test_doctor() {
     OUT=$("$DOC" "$F" 2>&1); RC=$?
     t_eq  "foreign key violation -> exit 1" "1" "$RC"
     t_has "... and it is reported" "Foreign key violations found" "$OUT"
+
+    # A foreign key to a table that does not exist (AOSP contacts2.db:
+    # REFERENCES mimetype, table "mimetypes") is a schema quirk, not damage.
+    Q="$WORK/fkquirk.db"
+    rm -f "$Q"
+    "$REAL" "$Q" "PRAGMA foreign_keys=OFF; CREATE TABLE mimetypes(_id INTEGER PRIMARY KEY); CREATE TABLE data(id INTEGER PRIMARY KEY, mimetype_id INTEGER REFERENCES mimetype(_id)); INSERT INTO mimetypes VALUES(1); INSERT INTO data VALUES(1,1),(2,1);" >/dev/null 2>&1
+    OUT=$("$DOC" "$Q" 2>&1); RC=$?
+    t_eq  "foreign key to a missing table -> exit 0" "0" "$RC"
+    t_has "... shown as a schema quirk" "point to a missing table" "$OUT"
+    "$REAL" "$Q" "PRAGMA foreign_keys=OFF; CREATE TABLE p(id INTEGER PRIMARY KEY); ALTER TABLE data ADD COLUMN pid REFERENCES p(id); UPDATE data SET pid = 7 WHERE id = 2;" >/dev/null 2>&1
+    OUT=$("$DOC" "$Q" 2>&1); RC=$?
+    t_eq  "... plus a real violation -> exit 1" "1" "$RC"
+    t_has "... the real one is reported" "data -> p: 1 row(s) with no parent" "$OUT"
 
     C="$WORK/corrupt.db"
     rm -f "$C"
@@ -459,6 +541,54 @@ test_doctor() {
     t_rc  "0-byte file -> exit 1" 1 "$DOC" "$WORK/empty.db"
     t_rc  "unknown option -> exit 1" 1 "$DOC" --bogus "$G"
     t_rc  "tool doctor delegates" 0 "$TOOL" doctor "$G"
+
+    # A database with an index on an Android-only collation (PHONEBOOK), like
+    # contacts2.db. Made here by renaming a NOCASE index in the schema. A
+    # whole-database check cannot run on it; tool 2.4 then called a good backup
+    # "failed its own integrity check".
+    AC="$WORK/android-coll.db"
+    rm -f "$AC"
+    "$REAL" "$AC" "CREATE TABLE people(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO people(name) SELECT 'n' || value FROM generate_series(1,200); CREATE INDEX people_name ON people(name COLLATE NOCASE);" \
+        "CREATE TABLE other(x); INSERT INTO other SELECT randomblob(300) FROM generate_series(1,2000);" \
+        ".dbconfig defensive off" "PRAGMA writable_schema=ON;" \
+        "UPDATE sqlite_master SET sql = replace(sql, 'NOCASE', 'PHONEBOOK') WHERE name = 'people_name';" >/dev/null 2>&1
+    t_has "android collation: whole check cannot run (setup)" "no such collation sequence: PHONEBOOK" "$("$REAL" "$AC" 'PRAGMA integrity_check;' 2>&1)"
+    OUT=$("$TOOL" integrity "$AC" 2>&1); RC=$?
+    t_eq  "android collation: tool integrity -> exit 0" "0" "$RC"
+    t_has "... names the table it could not check" "people (PHONEBOOK)" "$OUT"
+    t_has "... and counts the checked ones" "passed for 1 of 2 tables" "$OUT"
+    OUT=$("$TOOL" backup "$AC" "$WORK/android-coll-bk.db" 2>&1); RC=$?
+    t_eq  "android collation: backup -> exit 0" "0" "$RC"
+    t_has "... says what was not verified" "people (PHONEBOOK)" "$OUT"
+    t_eq  "... and the copy is complete" "2000" "$("$REAL" "$WORK/android-coll-bk.db" 'SELECT count(*) FROM other;' 2>&1)"
+    t_rc  "android collation: restore -> exit 0" 0 "$TOOL" restore "$WORK/android-coll-bk.db" "$AC"
+    OUT=$("$DOC" "$AC" 2>&1); RC=$?
+    t_eq  "android collation: doctor -> exit 0" "0" "$RC"
+    t_has "... summary says what could not be checked" "could not be checked" "$OUT"
+    t_rc  "android collation: doctor --quick -> exit 0" 0 "$DOC" --quick "$AC"
+    # A real fault in a table that can be checked must still be found.
+    ACB="$WORK/android-coll-bad.db"
+    cp "$AC" "$ACB"
+    PAGES=$("$REAL" "$ACB" 'PRAGMA page_count;' 2>/dev/null)
+    dd if=/dev/urandom of="$ACB" bs=4096 seek=$((PAGES - 2)) count=1 conv=notrunc 2>/dev/null
+    OUT=$("$DOC" "$ACB" 2>&1); RC=$?
+    t_eq  "android collation + damaged table: doctor -> exit 1" "1" "$RC"
+    t_has "... reported as FAILED" "FAILED" "$OUT"
+    t_rc  "android collation + damaged table: backup refused" 1 "$TOOL" backup "$ACB" "$WORK/android-coll-bad-bk.db"
+
+    # A file over 2 GB (sparse). mksh does 32-bit arithmetic: tool 2.4 showed a
+    # negative size and counted rows on it as if it were small.
+    BIG="$WORK/big.db"
+    cp "$G" "$BIG"
+    if truncate -s 3221225472 "$BIG" 2>/dev/null; then
+        OUT=$("$DOC" "$BIG" 2>&1)
+        t_has "3 GB file: doctor size" "File size: 3.0 GB" "$OUT"
+        t_has "3 GB file: row counts skipped above 256 MB" "Row counts skipped" "$OUT"
+        t_has "3 GB file: tool info size" "File size:       3.0 GB" "$("$TOOL" info "$BIG" 2>&1)"
+        rm -f "$BIG"
+    else
+        skip "no truncate to make a 3 GB sparse file"
+    fi
 }
 
 test_module() {
@@ -472,7 +602,9 @@ test_module() {
     PROPV=$(sed -n 's/^version=//p' "$MODDIR/module.prop" | head -n 1)
     BASE="${PROPV#v}"; BASE="${BASE%%-*}"
     t_eq "module.prop version matches the binary" "$BASE" "$("$REAL" --version | cut -d' ' -f1)"
-    t_has "service.sh status in module.prop" "working)" "$(grep '^description=' "$MODDIR/module.prop")"
+    DESC=$(grep '^description=' "$MODDIR/module.prop")
+    t_has "service.sh status in module.prop" "working)" "$DESC"
+    t_eq  "status appears exactly once" "1" "$(printf '%s\n' "$DESC" | grep -o ' (v[0-9.]* working' | wc -l | tr -d ' ')"
     t_eq "module.prop keeps updateJson (last line)" "1" "$(grep -c '^updateJson=' "$MODDIR/module.prop")"
     t_eq "/data/local/.sqliterc-full deployed" "yes" "$([ -f /data/local/.sqliterc-full ] && echo yes)"
     # Not "command -v sqlite3": under su the PATH may still start with Termux's
@@ -505,7 +637,7 @@ test_module() {
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
-    printf 'sqlite3-module-test v%s — %s\n' "$SUITE_VERSION" "$(date)"
+    printf 'sqlite3-module-test v%s - %s\n' "$SUITE_VERSION" "$(date)"
     printf 'BIN_DIR: %s\nWORK:    %s\nkernel:  %s\n' "$BIN_DIR" "$WORK" "$(uname -rm)"
     [ -n "$(getprop ro.product.model 2>/dev/null)" ] && \
         printf 'device:  %s (Android %s)\n' "$(getprop ro.product.model)" "$(getprop ro.build.version.release)"

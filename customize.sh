@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SQLite3 (Arm64 Only) — installer
+# SQLite3 (Arm64 Only) - installer
 
 # ── Architecture check ────────────────────────────────────────────────────────
 ARCH=$(uname -m 2>/dev/null)
@@ -22,7 +22,7 @@ MOD_VER=$(sed -n 's/^version=//p' "$MODPATH/module.prop" | head -1)
 
 ui_print " "
 ui_print "***********************************"
-ui_print "  SQLite3 $MOD_VER — Arm64 Only"
+ui_print "  SQLite3 $MOD_VER - Arm64 Only"
 ui_print "  by Tears Burn"
 ui_print "***********************************"
 ui_print " "
@@ -37,7 +37,7 @@ for f in sqlite3 sqlite3.real; do
         ui_print " "
         ui_print "  ! FATAL: $f is missing from this package."
         ui_print "    The zip is incomplete or was repacked incorrectly."
-        abort "Broken package — installation aborted."
+        abort "Broken package - installation aborted."
     fi
 done
 
@@ -50,7 +50,7 @@ for f in sqlite3 sqlite3.real sqldiff sqlite3-tool sqlite3-doctor; do
         set_perm "$MODPATH/system/bin/$f" 0 0 0755
         ui_print "  + $f"
     else
-        # Optional companions — the module still works without them.
+        # Optional companions - the module still works without them.
         ui_print "  ! missing (optional): $f"
     fi
 done
@@ -65,7 +65,7 @@ if [ -z "$BIN_VER" ]; then
     ui_print "    Wrong architecture, or the binary is corrupt."
     ui_print "    uname -m : $ARCH"
     ui_print "    cpu.abi  : $ABI"
-    abort "Unusable binary — installation aborted."
+    abort "Unusable binary - installation aborted."
 fi
 
 ui_print " "
