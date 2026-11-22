@@ -921,7 +921,7 @@ su -c 'VERBOSE=1 sh /data/data/com.termux/files/home/sqlite3-module-test.sh'</pr
 
       <footer>
         <div class="footer-left"><div class="dot"></div> SQLite3 · Android Arm64 · Tears Burn</div>
-        <a href="https://github.com/nikakvo/sqlite3-android-arm64-only" target="_blank">GitHub →</a>
+        <a href="#" data-ext="https://github.com/nikakvo/sqlite3-android-arm64-only/">GitHub →</a>
       </footer>
 
     </main>
@@ -1004,6 +1004,48 @@ su -c 'VERBOSE=1 sh /data/data/com.termux/files/home/sqlite3-module-test.sh'</pr
     sections.forEach(function(s) { if (s.getBoundingClientRect().top - saTop <= 80) active = s.id; });
     navItems.forEach(function(n) { n.classList.toggle('active', n.getAttribute('href') === '#' + active); });
     document.getElementById('toTop').classList.toggle('show', scrollArea.scrollTop > 400);
+  });
+
+  // Outside sites open in the phone's browser. The root manager would load a
+  // link in this WebView, where the site's scripts could reach ksu.exec.
+  var _extSeq = 0, _extToastT = null;
+  function extToast(msg) {
+    var t = document.getElementById('ext-toast');
+    if (!t) {
+      t = document.createElement('div'); t.id = 'ext-toast';
+      t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:88%;z-index:99;' +
+        'background:#1a0808;border:1px solid #ff4455;color:#ffd6da;font:12px/1.4 var(--mono,monospace);' +
+        'padding:8px 12px;border-radius:3px;text-align:center';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg; t.style.display = 'block';
+    clearTimeout(_extToastT); _extToastT = setTimeout(function () { t.style.display = 'none'; }, 3200);
+  }
+  function openExt(url) {
+    if (!/^https:\/\/[a-z0-9.-]+\/[a-z0-9._\/-]*$/i.test(url)) { extToast('Not opened: not an https address'); return; }
+    if (typeof ksu === 'undefined' || !ksu || typeof ksu.exec !== 'function') { extToast('Could not open the browser: no root bridge'); return; }
+    var cmd = "am start -a android.intent.action.VIEW -d '" + url + "' 2>&1";
+    var check = function (errno, out) {
+      var err = String(out || '').split('\n').filter(function (l) { return /^Error/.test(l); })[0];
+      if (errno !== 0 || err) extToast('Could not open the browser: ' + (err || 'am start ended with ' + errno));
+    };
+    var name = '__ext_cb_' + (++_extSeq) + '_' + Date.now();
+    window[name] = function (errno, stdout, stderr) {
+      try { delete window[name]; } catch (e) { window[name] = undefined; }
+      check(typeof errno === 'number' ? errno : 0, String(stdout || '') + String(stderr || ''));
+    };
+    try { ksu.exec(cmd, '{}', name); }
+    catch (e) {
+      try { delete window[name]; } catch (_) {}
+      try { var r = ksu.exec(cmd); check(0, typeof r === 'string' ? r : (r && r.stdout) || ''); }
+      catch (e2) { extToast('Could not open the browser: ' + String((e2 && e2.message) || e2)); }
+    }
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[data-ext]');
+    if (!a) return;
+    e.preventDefault();
+    openExt(a.getAttribute('data-ext'));
   });
 </script>
 

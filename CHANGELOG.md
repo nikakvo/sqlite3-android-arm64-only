@@ -1,5 +1,10 @@
 # Changelog
 
+## SQLite 3.54.1 - r3
+
+### Changed
+- The GitHub link on the help page opens in your browser instead of inside the WebUI, where a website could reach the root manager.
+
 ## SQLite 3.54.1 - r2
 
 ### Fixed
@@ -335,7 +340,7 @@ The `.open` caveat is now documented rather than silently not working.
 
 Bugfix patch release. No new features.
 
-Fixes for problems in 3.53.0 / 3.53.1 / 3.53.2, mostly reported by AI-generated issues.
+Fixes for problems in 3.53.0 / 3.53.1 / 3.53.2.
 
 ---
 
